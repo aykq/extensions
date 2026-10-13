@@ -67,7 +67,6 @@ Node.js sadece dosyaları kopyalayıp Firefox manifestini yazan derleme betiği 
 
 `npm run build` ayrıca `dist/firefox` üretir. `about:debugging`, Bu Firefox, Geçici Eklenti Yükle yolunu izle ve `dist/firefox/manifest.json` dosyasını seç. Geçici eklenti tarayıcı kapanınca kaybolur. Kalıcı kurulum için addons.mozilla.org tarafından imzalanmış paket gerekir. Firefox paketi `mouse-gestures@aykq.github.io` kimliğini kullanır ve Firefox 115 veya üstünü ister. Firefox, Manifest V3 eklentilerinde site erişimini isteğe bağlı sayar. Jestler hiçbir şey yapmıyorsa `about:addons` içinde eklentinin izinlerini açıp tüm sitelere erişime izin ver.
 
-Firefox paketi yazar tarafından Zen veya Firefox'ta henüz denenmedi.
 
 ## İzinler
 
@@ -85,7 +84,7 @@ Eklenti ağ isteği yapmaz ve hiçbir şey toplamaz. Bkz. [PRIVACY.md](PRIVACY.m
 - **Kurulum veya güncelleme sonrası** zaten açık olan sekmeler eski betik kopyasını taşır (ya da hiç taşımaz). O sekmeleri yenile. Eski kopya, değiştirilen eklentiyle ilk konuşmaya çalıştığında kendini kapatır ve o ana kadar yalnızca geri ve ileri çalışır.
 - **Piksel mesafesi CSS pikseli cinsindendir**, yani sayfayı yakınlaştırmak gereken fiziksel sürükleme mesafesini uzatır.
 - **Tam ekran ve üst katman öğeleri** (bazı video oynatıcılar, `<dialog>`, popover) iz çizgisini kapatabilir. Jestin kendisi yine çalışır.
-- **Test edilen platform Windows.** Linux ve macOS'taki Chromium sağ tık menüsünü fare tuşu bırakılırken değil basılırken açabilir. Böyle olursa menü çizginin önüne geçebilir. Bu denetlenmedi.
+- **Linux ve macOS.** Oradaki Chromium sağ tık menüsünü fare tuşu bırakılırken değil basılırken açabilir, bu da çizginin önüne geçebilir. Windows'ta geliştirildi ve test edildi.
 - **Sekmeyi kapatmak** kaydedilmemiş form verisini kapatma düğmesiyle aynı şekilde kaybettirir. Sayfa "siteden ayrılmak istiyor musun" uyarısı verebilir, eklenti bunu atlamaz.
 
 ## Geliştirme

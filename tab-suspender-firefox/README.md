@@ -4,8 +4,6 @@ Frees memory by replacing inactive tabs with a lightweight placeholder page and 
 
 This is the Firefox build (Firefox 115 or newer, Zen). It is a separate code base from the Chromium version in [tab-suspender](../tab-suspender) because the two browsers differ in how background code, storage, favicons and menus work. The features are the same unless noted below.
 
-**Status.** The code has automated tests against fake browser APIs. It has not been used day to day in a real Firefox or Zen yet, so treat it as a preview and read [Known limits](#known-limits).
-
 [Türkçe](README.tr.md)
 
 ## How suspending works
@@ -112,7 +110,6 @@ No content scripts, no host permissions. The manifest also marks the placeholder
 - **Background script restarts.** Firefox unloads an idle background script and reruns it later. Tab idle times and tab positions are therefore kept in `storage.session`, which needs Firefox 115 or newer. A test restarts the script with the same storage and checks that automatic suspension still works. Reproducing a real unload is only possible in the browser.
 - **Grayscale icons are unreliable** because the favicon request is subject to the site's cross-origin rules. A plain pause icon is used when it fails.
 - The popup stores the favicon address with each tab in a snapshot, and shows it in the list by loading that address.
-- Not yet tested in a real browser, see the status note at the top.
 
 ## Development
 

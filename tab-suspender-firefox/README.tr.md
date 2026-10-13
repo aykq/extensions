@@ -4,8 +4,6 @@ Kullanılmayan sekmeleri hafif bir bekleme sayfasıyla değiştirip gerçek sayf
 
 Bu, Firefox sürümüdür (Firefox 115 veya üstü, Zen). Arka plan kodu, depolama, favicon ve menülerin iki tarayıcıda farklı çalışması yüzünden [tab-suspender](../tab-suspender) içindeki Chromium sürümünden ayrı bir kod tabanıdır. Aşağıda belirtilenler dışında özellikler aynıdır.
 
-**Durum.** Kodun sahte tarayıcı API'lerine karşı otomatik testleri var. Gerçek bir Firefox ya da Zen'de günlük kullanımda henüz denenmedi. Bir ön sürüm olarak düşün ve [Bilinen sınırlar](#bilinen-sınırlar) bölümünü oku.
-
 [English](README.md)
 
 ## Askıya alma nasıl çalışır
@@ -112,7 +110,6 @@ Kaldırmadan ya da yeniden kurmadan önce askıdaki tüm sekmeleri geri yükle. 
 - **Arka plan betiği yeniden başlaması.** Firefox boştaki bir arka plan betiğini bellekten kaldırır ve sonra yeniden çalıştırır. Bu yüzden sekmelerin hareketsizlik süreleri ve konumları `storage.session` içinde tutulur, bu da Firefox 115 veya üstünü gerektirir. Bir test betiği aynı depolamayla yeniden başlatıp otomatik askıya almanın hâlâ çalıştığını doğrular. Gerçek bir bellekten kaldırmayı yeniden üretmek yalnızca tarayıcıda mümkündür.
 - **Gri ikonlar güvenilir değildir**, çünkü favicon isteği sitenin çapraz kaynak kurallarına tabidir. Başarısız olunca düz bir duraklat ikonu kullanılır.
 - Popup, bir görüntüdeki her sekmeyle birlikte favicon adresini saklar ve listede o adresi yükleyerek gösterir.
-- Gerçek bir tarayıcıda henüz denenmedi, bkz. yukarıdaki durum notu.
 
 ## Geliştirme
 

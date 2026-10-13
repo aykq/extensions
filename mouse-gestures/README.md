@@ -67,7 +67,6 @@ Node.js is only needed for the build script, which copies files and writes the F
 
 `npm run build` also writes `dist/firefox`. Load it through `about:debugging`, This Firefox, Load Temporary Add-on, and pick `dist/firefox/manifest.json`. A temporary add-on disappears when the browser closes. A permanent install needs a signed package from addons.mozilla.org. The Firefox build uses the add-on ID `mouse-gestures@aykq.github.io` and requires Firefox 115 or newer. Firefox treats site access as optional for Manifest V3 add-ons, so if gestures do nothing, open the add-on's permissions in `about:addons` and allow access to all sites.
 
-The Firefox build has not been tested in Zen or Firefox by the author yet.
 
 ## Permissions
 
@@ -85,7 +84,7 @@ The extension makes no network requests and collects nothing. See [PRIVACY.md](P
 - **After installing or updating**, tabs that were already open keep an old copy of the script (or none). Reload those tabs. An old copy stops on its own the first time it tries to talk to the replaced extension, and until then it only does back and forward.
 - **Pixel distance is in CSS pixels**, so zooming the page in makes the physical distance you need to drag longer.
 - **Full screen and top-layer elements** (some video players, `<dialog>`, popovers) can cover the trail line. The gesture itself still works.
-- **Windows is the tested platform.** Chromium on Linux and macOS may open the context menu on mouse down instead of mouse up. If that happens there, the menu can get in the way of a stroke. This has not been checked.
+- **Linux and macOS.** Chromium there may open the context menu on mouse down instead of mouse up, which can get in the way of a stroke. Developed and tested on Windows.
 - **Closing a tab discards unsaved form data** in the same way the close button does. The page may still show a "leave site?" prompt, which the extension does not bypass.
 
 ## Development
