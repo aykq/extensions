@@ -1,7 +1,6 @@
-"""icon.svg'yi (48x48 viewBox) birebir PNG'ye cizer.
+"""Redraws src/icons/icon.svg (48x48 viewBox) as PNG icons.
 
-Chromium SVG ikon kabul etmiyor; MV3 manifest'i PNG istiyor.
-Supersample (8x) + LANCZOS ile kenar yumusatma.
+Chromium does not accept SVG extension icons. Draws at 8x and downsizes with LANCZOS for smooth edges.
 """
 import os
 from PIL import Image, ImageDraw
@@ -9,15 +8,15 @@ from PIL import Image, ImageDraw
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src', 'icons')
 
 VB = 48          # SVG viewBox birimi
-SS = 8           # supersample carpani
-S  = VB * SS     # cizim tuvali: 384px
+SS = 8           # supersample factor
+S  = VB * SS     # drawing canvas: 384px
 
 BG     = (0x1a, 0x1a, 0x2e, 255)
 ACCENT = (0x4A, 0x90, 0xE2, 255)
 
 
 def u(v):
-    """viewBox birimi -> tuval pikseli"""
+    """viewBox units -> canvas pixels"""
     return v * SS
 
 
@@ -26,7 +25,7 @@ def draw():
     d = ImageDraw.Draw(img)
 
     # <circle cx=24 cy=24 r=22 fill=#1a1a2e stroke=#4A90E2 stroke-width=2>
-    # SVG'de stroke merkeze binerek cizilir: gorsel yaricap 22 + 1 = 23
+    # SVG strokes are centered on the edge, so the visible radius is 22 + 1 = 23
     r, sw = 22, 2
     d.ellipse(
         [u(24 - r), u(24 - r), u(24 + r), u(24 + r)],
@@ -35,12 +34,12 @@ def draw():
 
     # <path d="M14 24 L24 14 L24 20 L34 20 L34 28 L24 28 L24 34 Z">
     pts = [(14, 24), (24, 14), (24, 20), (34, 20),
-           (34, 28), (24, 28), (24, 34), (14, 24)]  # Z = basa donus
+           (34, 28), (24, 28), (24, 34), (14, 24)]  # Z closes the path
     d.line([(u(x), u(y)) for x, y in pts],
            fill=ACCENT, width=int(u(2.5)), joint='curve')
 
-    # joint='curve' yalniz ic kosleri yuvarlatir, uc noktalari degil.
-    # stroke-linecap=round karsiligi: bas/son ucuna disk kondur.
+    # joint='curve' rounds inner corners only, not the end point.
+    # Equivalent of stroke-linecap=round: put a disc on the start point.
     cap = u(2.5) / 2
     for x, y in (pts[0],):
         d.ellipse([u(x) - cap, u(y) - cap, u(x) + cap, u(y) + cap], fill=ACCENT)
