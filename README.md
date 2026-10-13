@@ -20,9 +20,9 @@ Kendi kullanımım için yazdığım ve burada yayınladığım küçük tarayı
 
 | Eklenti | Ne yapar | Tarayıcılar |
 |---|---|---|
-| [Mouse Gestures](mouse-gestures) | Geri, ileri, sekme kapatma, yeni sekme ve yenileme için sağ tuşla sürükleme jestleri. | Chromium (MV3), Firefox paketi dahil |
-| [Tab Suspender](tab-suspender) | Kullanılmayan sekmeleri askıya alıp bellek kazandırır. Otomatik askıya alma, zamanlanmış yedek ve dışa aktarma içerir. | Chromium (MV3) |
-| [Tab Suspender (Firefox)](tab-suspender-firefox) | Aynı fikrin Firefox sürümü, ayrı bir kod tabanı olarak. | Firefox 115+, Zen |
+| [Mouse Gestures](mouse-gestures/README.tr.md) | Geri, ileri, sekme kapatma, yeni sekme ve yenileme için sağ tuşla sürükleme jestleri. | Chromium (MV3), Firefox paketi dahil |
+| [Tab Suspender](tab-suspender/README.tr.md) | Kullanılmayan sekmeleri askıya alıp bellek kazandırır. Otomatik askıya alma, zamanlanmış yedek ve dışa aktarma içerir. | Chromium (MV3) |
+| [Tab Suspender (Firefox)](tab-suspender-firefox/README.tr.md) | Aynı fikrin Firefox sürümü, ayrı bir kod tabanı olarak. | Firefox 115+, Zen |
 
 Her eklentinin kendi klasöründe tüm özellikleri, istediği izinleri ve bilinen sınırlarını anlatan bir README ve bir gizlilik metni var. Hepsi MIT lisanslıdır, bkz. [LICENSE](LICENSE). Arayüzler İngilizce ve Türkçe sunulur.
 
