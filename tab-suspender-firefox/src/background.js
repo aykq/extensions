@@ -699,6 +699,8 @@ async function ensureBackupAlarm() {
 }
 
 browser.alarms.onAlarm.addListener(async (alarm) => {
+  await ensureInitialized();
+
   if (alarm.name === BACKUP_ALARM) {
     await createBackup();
     // Sadece tarayıcı başlangıcında değil, periyodik olarak da orphan
@@ -738,17 +740,18 @@ async function autoSuspendCheck() {
   const threshold = settings.thresholdMinutes * 60 * 1000;
   const now       = Date.now();
   const allTabs   = await browser.tabs.query({});
+  const state     = await readTabState();
 
   for (const tab of allTabs) {
     if (tab.pinned)              continue;
-    if (tab.id === activeTabId)  continue;
+    if (tab.active)              continue;
     if (tab.audible)             continue; // müzik/görüntülü görüşme kesilmesin
     if (tab.discarded)           continue;
     if (tab.incognito)           continue;
     if (isSuspendPage(tab.url))  continue;
     if (isBlockedUrl(tab.url))   continue;
 
-    const lastActive = tabLastActiveCache.get(tab.id);
+    const lastActive = state.lastActive[tab.id];
     if (lastActive === undefined) continue;
 
     if (now - lastActive >= threshold) {
@@ -807,40 +810,77 @@ async function detectOrphanedSuspended() {
   });
 }
 
-// ─── Tab cache ────────────────────────────────────────────────────────────────
+// ─── Tab state ────────────────────────────────────────────────────────────────
 
-const tabUrlCache        = new Map(); // tabId → url
-const tabIndexCache      = new Map(); // tabId → { index, windowId }
-const tabLastActiveCache = new Map(); // tabId → Date.now() timestamp
-let   activeTabId        = null;
+// Firefox unloads an idle background script and later reruns it from the top, but onInstalled
+// and onStartup do not fire again. State kept in module variables would be lost, so it lives
+// in storage.session (memory only, cleared when the browser closes).
+const TAB_STATE_KEY = "tabState";
 
-async function refreshIndexCache(windowId) {
-  const tabs = await browser.tabs.query({ windowId });
-  for (const t of tabs) {
-    tabIndexCache.set(t.id, { index: t.index, windowId: t.windowId });
+function emptyTabState() {
+  return { urls: {}, index: {}, lastActive: {}, activeTabId: null };
+}
+
+async function readTabState() {
+  try {
+    const got = await browser.storage.session.get(TAB_STATE_KEY);
+    return { ...emptyTabState(), ...(got?.[TAB_STATE_KEY] || {}) };
+  } catch {
+    return emptyTabState();
   }
 }
 
-browser.tabs.onActivated.addListener(({ tabId }) => {
-  const previousTabId = activeTabId;
-  activeTabId = tabId;
-  tabLastActiveCache.set(tabId, Date.now());
-  // Sekmeden AYRILDIĞI an da boşta sayacı başlar; yoksa uzun süredir kullanılan
-  // sekme ayrılır ayrılmaz otomatik askıya alınırdı.
-  if (previousTabId !== null && previousTabId !== tabId) tabLastActiveCache.set(previousTabId, Date.now());
+// Listeners fire concurrently; the chain keeps read-modify-write steps from overwriting each other.
+let tabStateChain = Promise.resolve();
+
+function mutateTabState(fn) {
+  tabStateChain = tabStateChain.then(async () => {
+    const state = await readTabState();
+    fn(state);
+    await browser.storage.session.set({ [TAB_STATE_KEY]: state });
+    return state;
+  }).catch(() => {});
+  return tabStateChain;
+}
+
+async function refreshIndexCache(windowId) {
+  const tabs = await browser.tabs.query({ windowId });
+  await mutateTabState((st) => {
+    for (const t of tabs) st.index[t.id] = { index: t.index, windowId: t.windowId };
+  });
+}
+
+function forgetTab(st, tabId) {
+  delete st.urls[tabId];
+  delete st.index[tabId];
+  delete st.lastActive[tabId];
+}
+
+browser.tabs.onActivated.addListener(async ({ tabId }) => {
+  await ensureInitialized();
+
+  let previousTabId = null;
+  await mutateTabState((st) => {
+    previousTabId = st.activeTabId;
+    st.activeTabId = tabId;
+    st.lastActive[tabId] = Date.now();
+    // The idle clock of a tab also starts the moment you leave it.
+    if (previousTabId !== null && previousTabId !== tabId) st.lastActive[previousTabId] = Date.now();
+  });
 
   if (previousTabId !== null && previousTabId !== tabId) {
     discardIfSuspended(previousTabId);
   }
 });
 
-browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.url || changeInfo.status === "complete") {
-    if (tab.url) tabUrlCache.set(tabId, tab.url);
-  }
-  if (tab.index !== undefined) {
-    tabIndexCache.set(tabId, { index: tab.index, windowId: tab.windowId });
-  }
+browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  const urlChanged = Boolean(changeInfo.url || changeInfo.status === "complete");
+  if (!urlChanged) return;
+
+  await mutateTabState((st) => {
+    if (tab.url) st.urls[tabId] = tab.url;
+    if (tab.index !== undefined) st.index[tabId] = { index: tab.index, windowId: tab.windowId };
+  });
 });
 
 browser.tabs.onMoved.addListener(async (tabId, moveInfo) => {
@@ -848,40 +888,42 @@ browser.tabs.onMoved.addListener(async (tabId, moveInfo) => {
 });
 
 browser.tabs.onCreated.addListener(async (tab) => {
-  if (tab.url) tabUrlCache.set(tab.id, tab.url);
-  tabIndexCache.set(tab.id, { index: tab.index, windowId: tab.windowId });
-  tabLastActiveCache.set(tab.id, Date.now());
+  await mutateTabState((st) => {
+    if (tab.url) st.urls[tab.id] = tab.url;
+    st.index[tab.id] = { index: tab.index, windowId: tab.windowId };
+    st.lastActive[tab.id] = Date.now();
+  });
   await refreshIndexCache(tab.windowId);
 });
 
-// ─── Tab kapatılınca ──────────────────────────────────────────────────────────
+// ─── Tab closed ───────────────────────────────────────────────────────────────
 
 browser.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
+  await ensureInitialized();
+
   if (removeInfo.isWindowClosing) {
-    tabUrlCache.delete(tabId);
-    tabIndexCache.delete(tabId);
-    tabLastActiveCache.delete(tabId);
+    await mutateTabState((st) => forgetTab(st, tabId));
     return;
   }
 
-  const cachedUrl = tabUrlCache.get(tabId);
-  if (cachedUrl && isSuspendPage(cachedUrl)) {
-    const uuid = extractUUIDFromUrl(cachedUrl);
+  // Read and delete in one step, otherwise a queued write can make us miss this tab's URL and index.
+  let before = null;
+  await mutateTabState((st) => {
+    before = { url: st.urls[tabId], index: st.index[tabId], wasActive: st.activeTabId === tabId };
+    forgetTab(st, tabId);
+  });
+  if (!before) return;
+
+  if (before.url && isSuspendPage(before.url)) {
+    const uuid = extractUUIDFromUrl(before.url);
     if (uuid && !(await uuidInUseElsewhere(uuid, tabId))) {
       await mutateSuspended((suspended) => { delete suspended[uuid]; });
     }
   }
 
-  const wasActive = tabId === activeTabId;
-  const cached    = tabIndexCache.get(tabId);
+  if (!before.wasActive || !before.index) return;
 
-  tabUrlCache.delete(tabId);
-  tabIndexCache.delete(tabId);
-  tabLastActiveCache.delete(tabId);
-
-  if (!wasActive || !cached) return;
-
-  const { index: closedIndex, windowId } = cached;
+  const { index: closedIndex, windowId } = before.index;
   const remaining = await browser.tabs.query({ windowId });
   if (remaining.length === 0) return;
 
@@ -895,7 +937,7 @@ browser.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
   }
 });
 
-// ─── Başlangıç ────────────────────────────────────────────────────────────────
+// ─── Startup ──────────────────────────────────────────────────────────────────
 
 async function initialize() {
   await ensureBackupAlarm();
@@ -904,24 +946,58 @@ async function initialize() {
   await ensureAutoSuspendAlarm(autoSuspendSettings);
 
   const allTabs = await browser.tabs.query({});
-  for (const tab of allTabs) {
-    if (tab.url) tabUrlCache.set(tab.id, tab.url);
-    tabIndexCache.set(tab.id, { index: tab.index, windowId: tab.windowId });
-    tabLastActiveCache.set(tab.id, Date.now());
-    if (tab.active) activeTabId = tab.id;
+  const now = Date.now();
+
+  await mutateTabState((st) => {
+    for (const tab of allTabs) {
+      if (tab.url) st.urls[tab.id] = tab.url;
+      st.index[tab.id] = { index: tab.index, windowId: tab.windowId };
+      // Never overwrite an existing value: this reruns on every wake-up, and resetting the idle clock each time would stop automatic suspension from ever firing.
+      if (st.lastActive[tab.id] === undefined) st.lastActive[tab.id] = now;
+      if (tab.active && st.activeTabId === null) st.activeTabId = tab.id;
+    }
+  });
+}
+
+// Only on install and browser start: running it on every wake-up would drop the record of a tab that closed while the script was unloaded.
+async function pruneDeadTabState() {
+  const allTabs = await browser.tabs.query({});
+  await mutateTabState((st) => {
+    const live = new Set(allTabs.map((t) => String(t.id)));
+    for (const key of Object.keys(st.lastActive)) {
+      if (!live.has(key)) {
+        delete st.lastActive[key];
+        delete st.urls[key];
+        delete st.index[key];
+      }
+    }
+  });
+}
+
+// Every listener that touches tab state waits for this first; it is safe to call repeatedly.
+let initPromise = null;
+
+function ensureInitialized() {
+  if (!initPromise) {
+    initPromise = initialize().catch((err) => {
+      initPromise = null;
+      throw err;
+    });
   }
+  return initPromise;
 }
 
 browser.runtime.onInstalled.addListener(async () => {
-  await initialize();
+  await ensureInitialized();
+  await pruneDeadTabState();
   await setupContextMenus();
 });
 
 browser.runtime.onStartup.addListener(async () => {
-  await initialize();
+  await ensureInitialized();
+  await pruneDeadTabState();
   await setupContextMenus();
-  // Session restore sekmeleri eklemeyi bitirmeden taranırsa meşru kayıtlar silinirdi:
-  // tarama kısa bir gecikmeyle alarmdan yapılır.
+  // Session restore may still be adding tabs; scanning now could delete valid records, so the scan runs from an alarm.
   browser.alarms.create(ORPHAN_STARTUP_ALARM, { delayInMinutes: 1 });
 });
 

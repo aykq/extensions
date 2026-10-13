@@ -101,7 +101,7 @@ Before you uninstall or reinstall, restore all suspended tabs. The placeholder t
 | Permission | Why |
 |---|---|
 | `tabs` | Read each tab's URL, title, pinned, audible and private state, and to suspend, restore, discard and activate tabs. |
-| `storage` | Keeps suspended-tab records, backups and settings on this device. |
+| `storage` | Keeps suspended-tab records, backups and settings on this device. A memory-only area holds the idle timers. |
 | `alarms` | Scheduled backups and the once-a-minute idle check. |
 | `menus` | The right-click submenu. |
 
@@ -109,7 +109,7 @@ No content scripts, no host permissions. The manifest also marks the placeholder
 
 ## Known limits
 
-- **State is kept in memory.** Tab idle times and tab positions live in the background script's memory. Firefox may unload an idle background script, which would reset them. If that happens, automatic suspension counts idle time from the moment the script restarts, and the "activate the next tab" behavior can pick the wrong tab. The Chromium version stores this in `storage.session` for exactly that reason. Porting it is the main open item for this build.
+- **Background script restarts.** Firefox unloads an idle background script and reruns it later. Tab idle times and tab positions are therefore kept in `storage.session`, which needs Firefox 115 or newer. A test restarts the script with the same storage and checks that automatic suspension still works. Reproducing a real unload is only possible in the browser.
 - **Grayscale icons are unreliable** because the favicon request is subject to the site's cross-origin rules. A plain pause icon is used when it fails.
 - The popup stores the favicon address with each tab in a snapshot, and shows it in the list by loading that address.
 - Not yet tested in a real browser, see the status note at the top.
@@ -122,7 +122,7 @@ npm test
 
 Runs two files with plain Node, no packages:
 
-- `blob-race.test.js`: the background script against fake browser APIs. It covers lost updates during bulk suspend, restoring when a record is missing, bulk restore from a multi-selection, discard rules, and automatic suspension rules.
+- `blob-race.test.js`: the background script against fake browser APIs. It covers lost updates during bulk suspend, restoring when a record is missing, bulk restore from a multi-selection, discard rules, automatic suspension rules and a background script restart.
 - `i18n.test.js`: every translation key used by the code exists in every locale, placeholders match, no personal paths ship.
 
 Layout:

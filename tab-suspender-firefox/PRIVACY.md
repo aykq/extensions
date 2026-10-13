@@ -10,7 +10,7 @@ What it stores on your device, in the browser's extension storage:
 - Backup snapshots of your open tabs (address, title, favicon address, whether suspended and pinned). Up to 20 are kept.
 - Your settings (automatic suspension on or off, idle time, backup interval).
 
-Idle timers for open tabs are kept in memory only.
+Idle timers for open tabs are kept in a memory-only storage area that is cleared when the browser closes.
 
 This data stays in the browser profile. It is not synced by the extension and not sent anywhere. It is removed when you uninstall the extension. Exports (TXT, JSON) are files you create yourself and are saved wherever you choose.
 
@@ -30,7 +30,7 @@ Cihazında, tarayıcının eklenti depolamasında sakladıkları:
 - Açık sekmelerinin yedek görüntüleri (adres, başlık, favicon adresi, askıda ve sabitli olup olmadığı). En fazla 20 tane saklanır.
 - Ayarların (otomatik askıya alma açık veya kapalı, hareketsizlik süresi, yedek aralığı).
 
-Açık sekmelerin hareketsizlik sayaçları yalnızca bellekte tutulur.
+Açık sekmelerin hareketsizlik sayaçları, tarayıcı kapanınca temizlenen, yalnızca bellekte tutulan bir depolama alanında durur.
 
 Bu veri tarayıcı profilinde kalır. Eklenti tarafından senkronize edilmez ve hiçbir yere gönderilmez. Eklentiyi kaldırdığında silinir. Dışa aktarımlar (TXT, JSON) kendi oluşturduğun dosyalardır ve seçtiğin yere kaydedilir.
 

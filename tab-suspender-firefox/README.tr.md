@@ -101,7 +101,7 @@ Kaldırmadan ya da yeniden kurmadan önce askıdaki tüm sekmeleri geri yükle. 
 | İzin | Neden |
 |---|---|
 | `tabs` | Her sekmenin URL'sini, başlığını, sabitli, sesli ve gizli durumunu okumak; sekmeleri askıya almak, geri yüklemek, bellekten atmak ve etkinleştirmek. |
-| `storage` | Askıdaki sekme kayıtlarını, yedekleri ve ayarları bu cihazda saklar. |
+| `storage` | Askıdaki sekme kayıtlarını, yedekleri ve ayarları bu cihazda saklar. Hareketsizlik sayaçları yalnızca bellekte tutulan bir alanda durur. |
 | `alarms` | Zamanlanmış yedekler ve dakikada bir yapılan hareketsizlik kontrolü. |
 | `menus` | Sağ tık alt menüsü. |
 
@@ -109,7 +109,7 @@ Kaldırmadan ya da yeniden kurmadan önce askıdaki tüm sekmeleri geri yükle. 
 
 ## Bilinen sınırlar
 
-- **Durum bellekte tutulur.** Sekmelerin hareketsizlik süreleri ve konumları arka plan betiğinin belleğinde durur. Firefox boştaki bir arka plan betiğini bellekten kaldırabilir ve bu bunları sıfırlar. Olursa otomatik askıya alma, hareketsizlik süresini betiğin yeniden başladığı andan saymaya başlar ve "sonraki sekmeyi etkinleştir" davranışı yanlış sekmeyi seçebilir. Chromium sürümü tam bu yüzden bunu `storage.session` içinde tutuyor. Bunu taşımak bu sürümün başlıca açık işidir.
+- **Arka plan betiği yeniden başlaması.** Firefox boştaki bir arka plan betiğini bellekten kaldırır ve sonra yeniden çalıştırır. Bu yüzden sekmelerin hareketsizlik süreleri ve konumları `storage.session` içinde tutulur, bu da Firefox 115 veya üstünü gerektirir. Bir test betiği aynı depolamayla yeniden başlatıp otomatik askıya almanın hâlâ çalıştığını doğrular. Gerçek bir bellekten kaldırmayı yeniden üretmek yalnızca tarayıcıda mümkündür.
 - **Gri ikonlar güvenilir değildir**, çünkü favicon isteği sitenin çapraz kaynak kurallarına tabidir. Başarısız olunca düz bir duraklat ikonu kullanılır.
 - Popup, bir görüntüdeki her sekmeyle birlikte favicon adresini saklar ve listede o adresi yükleyerek gösterir.
 - Gerçek bir tarayıcıda henüz denenmedi, bkz. yukarıdaki durum notu.
@@ -122,7 +122,7 @@ npm test
 
 Paket gerektirmeyen düz Node ile iki dosya çalıştırır:
 
-- `blob-race.test.js`: arka plan betiği, sahte tarayıcı API'leriyle. Toplu askıya almada kayıp güncellemeleri, kayıt eksikken geri yüklemeyi, çoklu seçimden toplu geri yüklemeyi, bellekten atma kurallarını ve otomatik askıya alma kurallarını kapsar.
+- `blob-race.test.js`: arka plan betiği, sahte tarayıcı API'leriyle. Toplu askıya almada kayıp güncellemeleri, kayıt eksikken geri yüklemeyi, çoklu seçimden toplu geri yüklemeyi, bellekten atma kurallarını, otomatik askıya alma kurallarını ve bir arka plan betiği yeniden başlatmasını kapsar.
 - `i18n.test.js`: koddaki her çeviri anahtarı her dilde var, yer tutucular uyuşuyor, kişisel yol yok.
 
 Yapı:

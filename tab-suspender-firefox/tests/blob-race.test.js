@@ -36,7 +36,7 @@ const tick = () => new Promise((r) => setTimeout(r, 40));
 const settle = () => new Promise((r) => setTimeout(r, 700));
 
 function createBrowserWorld(tabs) {
-  return { local: {}, tabs, updates: [], created: [], discarded: [], menus: {} };
+  return { local: {}, session: {}, tabs, updates: [], created: [], discarded: [], menus: {} };
 }
 
 /**
@@ -75,6 +75,10 @@ function boot(world, opts) {
           return key in world.local ? { [key]: clone(world.local[key]) } : {};
         },
         set: async (obj) => { await ioLatency(); Object.assign(world.local, clone(obj)); },
+      },
+      session: {
+        get: async (key) => (key in world.session ? { [key]: clone(world.session[key]) } : {}),
+        set: async (obj) => { Object.assign(world.session, clone(obj)); },
       },
       onChanged: ev([]),
     },
@@ -231,6 +235,28 @@ function boot(world, opts) {
   check('suspend sayfasina geri donme dongusu reddedildi',
     w3.updates.every((u) => String(u.url || '').indexOf(SUSPEND_PREFIX) !== 0),
     JSON.stringify(w3.updates));
+
+  // ── 2b. Background script unloaded and rerun (Firefox event page): idle clocks must survive
+  console.log('\n-- Background restart keeps idle clocks --');
+  const w2b = createBrowserWorld([
+    { id: 1, index: 0, windowId: 1, active: true, highlighted: true, pinned: false,
+      url: 'https://one.example/', title: 'One', favIconUrl: '' },
+    { id: 2, index: 1, windowId: 1, active: false, highlighted: false, pinned: false,
+      url: 'https://two.example/', title: 'Two', favIconUrl: '' },
+  ]);
+  w2b.local.autoSuspend = { enabled: true, thresholdMinutes: 15 };
+  const sw2b = boot(w2b);
+  for (const fn of sw2b.L.onInstalled) await fn();
+  w2b.session.tabState.lastActive[2] = Date.now() - 20 * 60 * 1000;
+  const sw2c = boot(w2b); // same storage, fresh module state, no onInstalled or onStartup
+  for (const fn of sw2c.L.onAlarm) await fn({ name: 'auto-suspend-check' });
+  await tick();
+  check('after a restart the idle tab is still auto-suspended',
+    w2b.updates.some((u) => u.id === 2 && String(u.url || '').indexOf(SUSPEND_PREFIX) === 0), JSON.stringify(w2b.updates));
+  check('after a restart the active tab is left alone',
+    !w2b.updates.some((u) => u.id === 1), JSON.stringify(w2b.updates));
+  check('a restart does not reset the idle clock of other tabs',
+    w2b.session.tabState.lastActive[2] <= Date.now() - 19 * 60 * 1000 || w2b.updates.length > 0);
 
   // ── 3. Çoklu seçimde toplu geri yükleme
   console.log('\n-- Toplu unsuspend (coklu secim) --');
