@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mouse Gestures</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 14px system-ui, sans-serif; margin: 16px; min-width: 320px; }
+  label { display: block; font-weight: 600; margin: 0 0 4px; }
+  p.help { margin: 4px 0 16px; opacity: .7; font-size: 12px; }
+  input[type=number] { width: 90px; padding: 4px 6px; }
+  textarea { width: 100%; box-sizing: border-box; min-height: 90px; padding: 6px; font: 13px ui-monospace, monospace; }
+  #status { height: 18px; font-size: 12px; opacity: .7; }
+</style>
+</head>
+<body>
+  <label for="minDistance" data-i18n="optMinDistanceLabel"></label>
+  <input id="minDistance" type="number" min="20" max="400" step="5">
+  <p class="help" data-i18n="optMinDistanceHelp"></p>
+
+  <label for="blockedSites" data-i18n="optBlockedLabel"></label>
+  <textarea id="blockedSites" spellcheck="false" placeholder="example.com"></textarea>
+  <p class="help" data-i18n="optBlockedHelp"></p>
+
+  <div id="status" role="status"></div>
+  <script src="options.js"></script>
+</body>
+</html>

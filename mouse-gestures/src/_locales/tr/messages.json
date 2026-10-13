@@ -1,0 +1,9 @@
+{
+  "extName": { "message": "Mouse Gestures" },
+  "extDescription": { "message": "Sağ tuşla sürükleyerek geri, ileri, sekme kapatma, yeni sekme ve yenileme işlemlerini yapın." },
+  "optMinDistanceLabel": { "message": "Minimum jest uzunluğu (px)" },
+  "optMinDistanceHelp": { "message": "Bir çizginin jest sayılması için ne kadar sürüklenmesi gerektiği. 20 ile 400 arasında. Varsayılan 60." },
+  "optBlockedLabel": { "message": "Jestlerin kapalı olduğu siteler" },
+  "optBlockedHelp": { "message": "Her satıra bir alan adı. Alt alan adları dahildir, yani example.com yazmak maps.example.com'u da kapsar." },
+  "optSaved": { "message": "Kaydedildi" }
+}

@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.zip
+*.xpi
+*.crx
+.playwright-mcp/

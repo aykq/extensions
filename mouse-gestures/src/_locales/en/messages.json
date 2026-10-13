@@ -1,0 +1,9 @@
+{
+  "extName": { "message": "Mouse Gestures" },
+  "extDescription": { "message": "Navigate and manage tabs by dragging with the right mouse button. Back, forward, close tab, new tab and reload." },
+  "optMinDistanceLabel": { "message": "Minimum stroke length (px)" },
+  "optMinDistanceHelp": { "message": "How far you have to drag before a stroke counts. Between 20 and 400. Default 60." },
+  "optBlockedLabel": { "message": "Sites where gestures are disabled" },
+  "optBlockedHelp": { "message": "One domain per line. Subdomains are included, so example.com also covers maps.example.com." },
+  "optSaved": { "message": "Saved" }
+}
