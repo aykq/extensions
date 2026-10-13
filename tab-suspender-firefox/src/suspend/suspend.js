@@ -1,16 +1,6 @@
-/**
- * suspend.js
- *
- * Veri öncelik sırası:
- *   1. URL parametreleri  — her zaman mevcuttur, storage silinse de çalışır
- *   2. storage.local      — favicon, greyFavIconUrl gibi ekstra veriler için
- */
-
 const msg = (key, ...subs) => browser.i18n.getMessage(key, subs.map(String));
 
 let currentUUID = null;
-
-// ─── DOM ─────────────────────────────────────────────────────────────────────
 
 function show(id) { document.getElementById(id).classList.remove("hidden"); }
 function hide(id) { document.getElementById(id).classList.add("hidden"); }
@@ -22,7 +12,7 @@ function setState(state) {
   show(`state-${state}`);
 }
 
-// Yalnız http(s): ?url= parametresi herhangi biri tarafından hazırlanabilir.
+// The ?url= parameter can be crafted by anyone, only http(s) is followed.
 function isHttpUrl(value) {
   try {
     const protocol = new URL(value).protocol;
@@ -36,8 +26,6 @@ function setText(id, value) {
   const el = document.getElementById(id);
   if (el) el.textContent = value;
 }
-
-// ─── Zaman ───────────────────────────────────────────────────────────────────
 
 function formatDate(isoString) {
   if (!isoString) return "—";
@@ -60,8 +48,6 @@ function getElapsed(isoString) {
   return msg("elapsedSeconds", s);
 }
 
-// ─── Favicon ─────────────────────────────────────────────────────────────────
-
 function loadFavicon(favIconUrl) {
   const img      = document.getElementById("favicon");
   const fallback = document.getElementById("favicon-fallback");
@@ -81,9 +67,8 @@ function loadFavicon(favIconUrl) {
 }
 
 function setTabFavicon(greyUrl) {
-  // Öncelik: greyscale > extension'ın kendi pause ikonu (orijinal favicon'a asla dönme —
-  // aksi halde greyscale üretimi CORS/eksik favicon nedeniyle başarısız olduğunda
-  // suspend edilen sekme aktif bir sekmeden ayırt edilemez hale gelir)
+  // Prefer the grayscale icon, then the extension's own pause icon. Never fall back to the original favicon,
+  // a suspended tab would look like an active one.
   const url = greyUrl || browser.runtime.getURL("../icons/48.png");
   document.querySelectorAll("link[rel~='icon']").forEach(el => el.remove());
   const link  = document.createElement("link");
@@ -93,8 +78,6 @@ function setTabFavicon(greyUrl) {
   document.head.appendChild(link);
 }
 
-// ─── Elapsed timer ────────────────────────────────────────────────────────────
-
 let elapsedInterval = null;
 
 function startElapsedTimer(suspendedAt) {
@@ -103,20 +86,15 @@ function startElapsedTimer(suspendedAt) {
   elapsedInterval = setInterval(update, 10_000);
 }
 
-// ─── Unsuspend ────────────────────────────────────────────────────────────────
-
 async function doUnsuspend() {
   if (elapsedInterval) clearInterval(elapsedInterval);
 
-  // Önce background'a mesaj gönder (storage'ı temizler ve navigate eder)
   try {
     const res = await browser.runtime.sendMessage({ action: "unsuspend" });
-    // Background yanıt verdiyse (başarı ya da hata) navigasyonu o yönetiyor;
-    // fallback'i de çalıştırmak iki navigasyonu yarıştırırdı.
+    // If the background answered, it owns the navigation; running the fallback too would race two navigations.
     if (res) return;
-  } catch (_) { /* background hazır değil olabilir */ }
+  } catch (_) {  }
 
-  // Fallback: storage yoksa URL'den oku ve direkt navigate et
   const params      = new URLSearchParams(window.location.search);
   const originalUrl = params.get("url");
   if (originalUrl && isHttpUrl(originalUrl)) {
@@ -124,19 +102,16 @@ async function doUnsuspend() {
   }
 }
 
-// ─── Ana render ───────────────────────────────────────────────────────────────
-
 async function render() {
   const params = new URLSearchParams(window.location.search);
+  // searchParams.get() already decodes; decoding again breaks titles that contain %.
   currentUUID  = params.get("id");
 
-  // ── 1) URL parametrelerinden kritik veriyi al (her zaman güvenilir) ──
   const urlParam   = params.get("url");
   const titleParam = params.get("t");
   const tsParam    = params.get("ts");
 
   if (!urlParam) {
-    // Çok eski format veya doğrudan açılmış — sadece bu durumda hata göster
     setState("error");
     return;
   }
@@ -151,14 +126,9 @@ async function render() {
     greyFavIconUrl: "",
   };
 
-  // Storage'ı beklemeden hemen ayarla — depolama okuması yalnızca favicon gibi
-  // ekstra verileri zenginleştiriyor, başlık her zaman URL parametrelerinden
-  // güvenilir şekilde okunabiliyor. Bu, tarayıcının gerçek başlığı gösterene
-  // kadar geçen süreyi kısaltır.
   document.title = baseEntry.title;
   setText("tab-title", baseEntry.title);
 
-  // ── 2) Storage'dan ekstra veriyi zenginleştir (favicon vs.) ──
   if (currentUUID) {
     try {
       const { suspended = {} } = await browser.storage.local.get("suspended");
@@ -166,13 +136,11 @@ async function render() {
       if (stored) {
         baseEntry.favIconUrl     = stored.favIconUrl     || "";
         baseEntry.greyFavIconUrl = stored.greyFavIconUrl || "";
-        // suspendedAt storage'dan daha kesin (URL encode edilirken kesilebilir)
         if (stored.suspendedAt) baseEntry.suspendedAt = stored.suspendedAt;
       }
-    } catch (_) { /* storage okunamadı — sorun değil, baseEntry yeterli */ }
+    } catch (_) {  }
   }
 
-  // ── 3) DOM'u doldur ── (title zaten yukarıda erken set edildi)
   const urlEl   = document.getElementById("tab-url");
   urlEl.textContent = baseEntry.originalUrl;
   urlEl.href        = isHttpUrl(baseEntry.originalUrl) ? baseEntry.originalUrl : "#";
@@ -188,18 +156,12 @@ async function render() {
   setState("suspended");
 }
 
-// ─── Event listeners ──────────────────────────────────────────────────────────
-
 document.getElementById("btn-unsuspend").addEventListener("click", doUnsuspend);
 document.getElementById("btn-newtab").addEventListener("click", () => {
   browser.tabs.create({ url: "about:newtab" });
 });
 
-// background.js greyscale favicon üretimini bitirip storage'a yazdığında
-// (bu, sayfa ilk render olduğunda henüz hazır olmayabilir) sayfa hâlâ açıksa
-// (discard edilmemişse) ikon burada güncellenir. tabs.sendMessage yerine
-// storage.onChanged kullanıyoruz çünkü tabs.sendMessage yalnızca content
-// script'lere ulaşır — suspend.html bir extension sayfası, content script değil.
+// tabs.sendMessage only reaches content scripts and this is an extension page, so the background signals the icon through storage.onChanged.
 browser.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !changes.suspended || !currentUUID) return;
   const entry = changes.suspended.newValue?.[currentUUID];
@@ -208,10 +170,5 @@ browser.storage.onChanged.addListener((changes, area) => {
   }
 });
 
-// Not: Alt+Shift+S burada AYRICA dinlenmiyor — background.js'teki global
-// "toggle-suspend" komutu zaten bu sekmede tetiklenince isSuspendPage()
-// kontrolüyle unsuspendTab()'i çağırıyor. İkisini birden dinlemek, sayfanın
-// kendi yönlendirmesiyle global komutun aynı anda çalışıp birbirini yarışa
-// sokmasına (ve sekmenin anında tekrar suspend edilmesine) yol açıyordu.
-
+// Alt+Shift+S is not handled here on purpose: the global command already restores this tab, and handling it twice races and re-suspends the tab.
 render();

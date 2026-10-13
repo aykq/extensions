@@ -8,10 +8,8 @@
 </head>
 <body>
 
-  <!-- ── Ana görünüm ── -->
   <div id="view-main" class="view">
 
-    <!-- Header -->
     <header class="header">
       <div class="brand">
         <div class="brand-icon">
@@ -23,7 +21,6 @@
       </div>
     </header>
 
-    <!-- Stats -->
     <section class="stats">
       <div class="stat">
         <span class="stat-value" id="stat-total">—</span>
@@ -41,14 +38,12 @@
       </div>
     </section>
 
-    <!-- Export row: tüm sekmeleri dışa aktar -->
     <div class="export-row">
       <span class="export-label" data-i18n="exportAllLabel"></span>
       <button class="btn-export" id="btn-export-all-txt" data-i18n-title="exportTxtTitle">TXT</button>
       <button class="btn-export" id="btn-export-all-json" data-i18n-title="exportJsonTitle">JSON</button>
     </div>
 
-    <!-- Primary action -->
     <div class="primary-action">
       <button class="btn-primary" id="btn-suspend-active">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -59,7 +54,6 @@
       <span class="shortcut-tag">Alt+Shift+S</span>
     </div>
 
-    <!-- Unsuspend all -->
     <div class="unsuspend-all-row">
       <button class="btn-unsuspend-all" id="btn-unsuspend-all">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -70,7 +64,6 @@
       <span class="update-hint" data-i18n="updateHint" data-i18n-title="updateHintTitle"></span>
     </div>
 
-    <!-- Backups section -->
     <section class="section">
       <div class="section-header">
         <span class="section-title" data-i18n="sectionBackups"></span>
@@ -94,7 +87,6 @@
       </div>
     </section>
 
-    <!-- Settings section (collapsible) -->
     <section class="section">
       <div class="section-header settings-toggle" id="settings-toggle">
         <span class="section-title" data-i18n="sectionSettings"></span>
@@ -131,7 +123,6 @@
 
   </div>
 
-  <!-- ── Backup detay görünümü ── -->
   <div id="view-detail" class="view hidden">
     <header class="header">
       <button class="btn-back" id="btn-back">

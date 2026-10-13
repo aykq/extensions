@@ -1,19 +1,9 @@
-/**
- * popup.js — Extension popup mantığı
- * İstatistikler, backup listesi, backup detay + restore, ayarlar, export
- */
-
-// Chromium'da `browser` namespace'i yok, Firefox'ta ikisi de var.
 const browser = globalThis.browser ?? globalThis.chrome;
 
 const msg = (key, ...subs) => browser.i18n.getMessage(key, subs.map(String));
 
-// ─── State ────────────────────────────────────────────────────────────────────
-
 let currentBackupIndex = null;
 let backupsCache = [];
-
-// ─── Mesaj yardımcısı ─────────────────────────────────────────────────────────
 
 async function send(message) {
   try {
@@ -23,8 +13,6 @@ async function send(message) {
     return null;
   }
 }
-
-// ─── Toast ────────────────────────────────────────────────────────────────────
 
 let toastTimer = null;
 
@@ -41,8 +29,6 @@ function showToast(msg) {
   toastTimer = setTimeout(() => toast.classList.remove("show"), 2000);
 }
 
-// ─── Tarih/saat formatı ───────────────────────────────────────────────────────
-
 function formatTimestamp(isoString) {
   return new Date(isoString).toLocaleString(browser.i18n.getUILanguage(), {
     day: "numeric",
@@ -53,14 +39,10 @@ function formatTimestamp(isoString) {
   });
 }
 
-// ─── View yönetimi ────────────────────────────────────────────────────────────
-
 function showView(id) {
   document.querySelectorAll(".view").forEach((v) => v.classList.add("hidden"));
   document.getElementById(id).classList.remove("hidden");
 }
-
-// ─── İstatistikler ────────────────────────────────────────────────────────────
 
 async function loadStats() {
   const res = await send({ action: "get-stats" });
@@ -69,8 +51,6 @@ async function loadStats() {
   document.getElementById("stat-active").textContent    = res.activeTabs;
   document.getElementById("stat-suspended").textContent = res.suspendedCount;
 }
-
-// ─── Backup listesi ───────────────────────────────────────────────────────────
 
 async function loadBackups() {
   const res = await send({ action: "get-backups" });
@@ -96,7 +76,6 @@ function renderBackupList() {
     item.className    = "backup-item";
     item.dataset.index = index;
 
-    // Önceki oturumdan kalan sekmeler — özel görsel
     if (backup.isOrphanedSession) {
       item.classList.add("backup-orphaned");
     }
@@ -142,8 +121,6 @@ function renderBackupList() {
   });
 }
 
-// ─── Backup detay görünümü ────────────────────────────────────────────────────
-
 function openBackupDetail(index) {
   currentBackupIndex = index;
   const backup = backupsCache[index];
@@ -169,8 +146,7 @@ function el(tag, className, text) {
   return node;
 }
 
-// Favicon'u tarayicinin kendi onbelleginden iste: popup acilinca N ucuncu taraf siteye
-// istek gitmez ve sayfa kontrolundeki favIconUrl hicbir attribute'a yazilmaz.
+// Ask the browser's favicon cache: no request goes to third-party sites and the page-controlled favIconUrl never lands in an attribute.
 function buildFavicon(tab) {
   const fallback = el("div", "tab-favicon-fallback");
   if (!/^https?:\/\//i.test(tab.url || "")) return [fallback];
@@ -210,7 +186,7 @@ function renderDetailTabs(tabs) {
     if (tab.suspended) badges.append(el("span", "badge-suspended", msg("badgeSuspended")));
     const openBtn = el("button", "btn-open-tab");
     openBtn.title = msg("titleOpen");
-    openBtn.innerHTML = OPEN_ICON_SVG; // sabit SVG, degisken yok
+    openBtn.innerHTML = OPEN_ICON_SVG;
     openBtn.addEventListener("click", async () => {
       await send({
         action: "restore-tab",
@@ -228,10 +204,8 @@ function renderDetailTabs(tabs) {
   });
 }
 
-// ─── Yardımcı fonksiyonlar ────────────────────────────────────────────────────
-
+// textContent to innerHTML does not escape quotes, so attribute contexts need this.
 function escapeHtml(str) {
-  // textContent->innerHTML tirnaklari kacirmaz; attribute baglaminda guvenli olmasi icin elle.
   return String(str || "")
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -246,8 +220,6 @@ function trimUrl(url) {
   }
 }
 
-// ─── Export yardımcısı ────────────────────────────────────────────────────────
-
 function downloadFile(content, filename, mimeType) {
   const blob = new Blob([content], { type: mimeType });
   const url  = URL.createObjectURL(blob);
@@ -257,8 +229,6 @@ function downloadFile(content, filename, mimeType) {
   a.click();
   URL.revokeObjectURL(url);
 }
-
-// ─── Backup export (detay görünümü) ──────────────────────────────────────────
 
 function exportAsTxt(backup) {
   const date  = formatTimestamp(backup.timestamp);
@@ -294,8 +264,6 @@ function exportAsJson(backup) {
   const date = formatTimestamp(backup.timestamp).replace(/[^a-zA-Z0-9]/g, "_").slice(0, 40);
   downloadFile(JSON.stringify(out, null, 2), `backup_${date}.json`, "application/json");
 }
-
-// ─── Tüm sekmeleri dışa aktar (canlı snapshot) ───────────────────────────────
 
 async function exportAllTabs(format) {
   const res = await send({ action: "get-all-tabs-for-export" });
@@ -335,8 +303,6 @@ async function exportAllTabs(format) {
   }
 }
 
-// ─── Otomatik askıya alma ayarları ───────────────────────────────────────────
-
 async function loadAutoSuspendSettings() {
   const res = await send({ action: "get-auto-suspend-settings" });
   if (!res) return;
@@ -358,8 +324,6 @@ async function saveAutoSuspendSettings() {
   await send({ action: "set-auto-suspend-settings", settings: { enabled, thresholdMinutes } });
 }
 
-// ─── Backup sıklığı ayarı ─────────────────────────────────────────────────────
-
 function setBackupIntervalText(minutes) {
   document.getElementById("backup-empty-sub").textContent = msg("backupIntervalInfo", minutes);
 }
@@ -380,9 +344,6 @@ async function saveBackupSettings() {
   setBackupIntervalText(res.backupIntervalMinutes);
 }
 
-// ─── Event listeners ──────────────────────────────────────────────────────────
-
-// Tüm askıdaki sekmeleri geri yükle
 document.getElementById("btn-unsuspend-all").addEventListener("click", async () => {
   const res = await send({ action: "unsuspend-all" });
   if (res?.count === 0) {
@@ -393,7 +354,6 @@ document.getElementById("btn-unsuspend-all").addEventListener("click", async () 
   }
 });
 
-// Aktif sekmeyi askıya al
 document.getElementById("btn-suspend-active").addEventListener("click", async () => {
   const res = await send({ action: "suspend-active" });
   if (res?.error) {
@@ -404,20 +364,17 @@ document.getElementById("btn-suspend-active").addEventListener("click", async ()
   }
 });
 
-// Şimdi yedekle
 document.getElementById("btn-backup-now").addEventListener("click", async () => {
   await send({ action: "create-backup-now" });
   await loadBackups();
   showToast(msg("toastBackupTaken"));
 });
 
-// Detay'dan geri dön
 document.getElementById("btn-back").addEventListener("click", () => {
   showView("view-main");
   currentBackupIndex = null;
 });
 
-// Tümünü geri yükle
 document.getElementById("btn-restore-all").addEventListener("click", async () => {
   if (currentBackupIndex === null) return;
   const backup = backupsCache[currentBackupIndex];
@@ -430,7 +387,6 @@ document.getElementById("btn-restore-all").addEventListener("click", async () =>
   showToast(msg("toastAllTabsOpened"));
 });
 
-// Backup detay export
 document.getElementById("btn-export-txt").addEventListener("click", () => {
   if (currentBackupIndex === null) return;
   const backup = backupsCache[currentBackupIndex];
@@ -447,24 +403,18 @@ document.getElementById("btn-export-json").addEventListener("click", () => {
   showToast(msg("toastJsonDownloaded"));
 });
 
-// Tüm sekmeleri dışa aktar
 document.getElementById("btn-export-all-txt").addEventListener("click",  () => exportAllTabs("txt"));
 document.getElementById("btn-export-all-json").addEventListener("click", () => exportAllTabs("json"));
 
-// Settings toggle (collapsible)
 document.getElementById("settings-toggle").addEventListener("click", () => {
   document.getElementById("settings-body").classList.toggle("hidden");
   document.getElementById("settings-chevron").classList.toggle("rotated");
 });
 
-// Auto-suspend ayarları
 document.getElementById("auto-suspend-toggle").addEventListener("change",    saveAutoSuspendSettings);
 document.getElementById("auto-suspend-threshold").addEventListener("change", saveAutoSuspendSettings);
 
-// Backup sıklığı ayarı
 document.getElementById("backup-interval").addEventListener("change", saveBackupSettings);
-
-// ─── Init ─────────────────────────────────────────────────────────────────────
 
 async function init() {
   await Promise.all([loadStats(), loadBackups(), loadAutoSuspendSettings(), loadBackupSettings()]);

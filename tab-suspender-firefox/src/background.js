@@ -1,32 +1,24 @@
-/**
- * Zen Tab Suspender — background.js
- * Service worker. Suspend/unsuspend mantığı, backup sistemi, state yönetimi.
- */
-
 const msg = (key) => browser.i18n.getMessage(key);
-
-// ─── Sabitler ────────────────────────────────────────────────────────────────
 
 const SUSPEND_PAGE                = browser.runtime.getURL("suspend/suspend.html");
 const BACKUP_ALARM                = "tab-backup";
 const AUTO_SUSPEND_ALARM          = "auto-suspend-check";
 const ORPHAN_STARTUP_ALARM        = "orphan-startup-check";
-const ORPHAN_MIN_AGE_MS           = 10 * 60 * 1000; // yeni askıya alınan (navigasyonu süren) sekmenin kaydı orphan sayılmaz
+// A tab that is still navigating can look orphaned, so young records are skipped.
+const ORPHAN_MIN_AGE_MS           = 10 * 60 * 1000;
 const DEFAULT_BACKUP_INTERVAL_MINUTES = 5;
 const MIN_BACKUP_INTERVAL_MINUTES     = 1;
 const MAX_BACKUP_INTERVAL_MINUTES     = 180;
-const AUTO_SUSPEND_CHECK_INTERVAL = 1; // dakika
+const AUTO_SUSPEND_CHECK_INTERVAL = 1;
 const MAX_BACKUPS                 = 20;
-const FAVICON_TIMEOUT_MS          = 2000; // greyscale favicon üretimi bu süreyi aşarsa discard'ı bekletmeyi bırak
-const FAVICON_PERSIST_GRACE_MS    = 350;  // favicon set edildikten sonra Firefox'un session store'a kaydetmesi için pay
-
-// ─── Yardımcı fonksiyonlar ────────────────────────────────────────────────────
+const FAVICON_TIMEOUT_MS          = 2000;
+// Time for the browser to store the new tab icon before the tab is discarded.
+const FAVICON_PERSIST_GRACE_MS    = 350;
 
 function generateUUID() {
   return crypto.randomUUID();
 }
 
-/** Çoğaltılan/yeniden açılan sekmeler aynı uuid'yi taşır; başka sekme kullanıyorsa kayıt silinmemeli. */
 async function uuidInUseElsewhere(uuid, exceptTabId) {
   const tabs = await browser.tabs.query({});
   return tabs.some((t) => t.id !== exceptTabId && isSuspendPage(t.url) && extractUUIDFromUrl(t.url) === uuid);
@@ -46,12 +38,10 @@ function extractUUIDFromUrl(url) {
   }
 }
 
-/** Suspend URL'sindeki `url=` parametresi — storage'dan bağımsız geri yükleme yolu. */
 function urlParamOf(suspendUrl) {
   try {
     const raw = new URL(suspendUrl).searchParams.get("url");
     if (!raw) return "";
-    // Kendi suspend sayfamıza ya da engelli bir şemaya geri dönmeyi reddet
     if (isSuspendPage(raw) || isBlockedUrl(raw)) return "";
     return raw;
   } catch {
@@ -77,13 +67,8 @@ function withTimeout(promise, ms) {
   ]);
 }
 
-/**
- * Yalnız http(s) askıya alınabilir/geri yüklenebilir; geri kalan her şey (data:, file:,
- * javascript:, about:, moz-extension: ...) engelli. Allowlist: blocklist büyük/küçük harf
- * ve baştaki boşluk ("DATA:", " javascript:") ile atlatılabiliyordu.
- * DİKKAT: suspend sayfası da moz-extension: şemasında; isBlockedUrl() çağrılarının
- * HEPSİNDE isSuspendPage() kontrolü ÖNCE gelmeli, yoksa geri yükleme çalışmaz.
- */
+// Allowlist: only http(s) can be suspended or restored. Always test isSuspendPage() before isBlockedUrl(),
+// the suspend page is a moz-extension: URL as well.
 function isBlockedUrl(url) {
   if (!url) return true;
   try {
@@ -104,8 +89,6 @@ function formatTimestamp(isoString) {
   });
 }
 
-// ─── Storage yardımcıları ─────────────────────────────────────────────────────
-
 async function getSuspended() {
   const { suspended = {} } = await browser.storage.local.get("suspended");
   return suspended;
@@ -115,15 +98,8 @@ async function setSuspended(suspended) {
   await browser.storage.local.set({ suspended });
 }
 
-/**
- * KRITIK: `suspended` TEK bir storage anahtarı — her değişiklik tüm blob'u
- * okuyup geri yazıyor. Serileştirilmezse eş zamanlı yazıcılar birbirini ezer
- * (kayıp güncelleme): toplu suspend'de her sekme için arka planda çalışan
- * greyscale favicon yazımı diğerlerinin yazdığını siliyor. Brave portunda
- * ölçüldü: 12 sekmeden yalnızca 3'ünün ikonu yazılabiliyordu.
- * Blob'a dokunan HER yol bu zincirden geçmeli; çıplak getSuspended/setSuspended
- * çifti kullanma.
- */
+// The `suspended` blob is one storage key, so every change reads and rewrites all of it. All writes go through this chain,
+// bare get/set pairs lose updates during a bulk suspend.
 let suspendedChain = Promise.resolve();
 
 function mutateSuspended(fn) {
@@ -133,7 +109,7 @@ function mutateSuspended(fn) {
     await setSuspended(suspended);
     return result;
   });
-  suspendedChain = run.then(() => {}, () => {}); // zincir bir hatada kırılmasın
+  suspendedChain = run.then(() => {}, () => {});
   return run;
 }
 
@@ -146,7 +122,6 @@ async function setBackups(backups) {
   await browser.storage.local.set({ backups });
 }
 
-// backups da okuma-değiştirme-yazma: alarm, orphan taraması ve popup silmesi birbirini ezmesin.
 let backupsChain = Promise.resolve();
 
 function mutateBackups(fn) {
@@ -160,14 +135,12 @@ function mutateBackups(fn) {
   return run;
 }
 
-// ─── Greyscale favicon dönüşümü ──────────────────────────────────────────────
-
+// Cap on the favicon download, a page controls this URL.
 const FAVICON_MAX_BYTES = 256 * 1024;
 
 async function toGreyscaleFavicon(favIconUrl) {
-  // favIconUrl sayfanın kontrolünde: yalnız http(s) ya da yerel data:image.
   if (!favIconUrl || (isBlockedUrl(favIconUrl) && !favIconUrl.startsWith("data:image/"))) return "";
-  // withTimeout fetch'i iptal etmez; indirme arkada sürüp belleğe dolmasın.
+  // withTimeout does not cancel the fetch, abort it so the download does not keep running.
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FAVICON_TIMEOUT_MS);
   try {
@@ -230,27 +203,19 @@ function drawPauseOverlay(ctx, canvasSize) {
   ctx.fill();
 }
 
-// ─── Suspend ─────────────────────────────────────────────────────────────────
-
-// tabId → discard'dan önce beklenmesi gereken promise (greyscale favicon + persist payı).
-// Hem waitForTabToLoad'daki ilk discard denemesi hem de discardIfSuspended (kullanıcı
-// sekmeden uzaklaştığında) aynı promise'i bekler; discard hangi yoldan tetiklenirse
-// tetiklensin favicon hazır olmadan tetiklenmesin diye.
+// tabId to a promise that must settle before discarding (grayscale favicon plus time for the browser to persist it). Both discard paths await it.
 const faviconReadyPromises = new Map();
 const suspendingTabs      = new Set();
 
-// tabId → bu zamana kadar discard edilmemeli (restore navigasyonu sürüyor).
+// tabId to a timestamp before which the tab must not be discarded while a restore is navigating.
 const restoringUntil   = new Map();
 const RESTORE_GUARD_MS = 15_000;
 
-/**
- * Restore sürerken tab.url, navigasyon commit olana kadar hâlâ suspend sayfasını gösterir;
- * o sırada discard navigasyonu iptal edip sekmeyi suspend ekranında dondurur.
- */
 function isDiscardable(t) {
   if (!t || t.discarded || t.active) return false;
   if (t.status === "loading") return false;
   if (!isSuspendPage(t.url)) return false;
+  // A restore in flight still reports the suspend URL; discarding then would freeze the tab on the placeholder.
   if (t.pendingUrl && !isSuspendPage(t.pendingUrl)) return false;
   if ((restoringUntil.get(t.id) || 0) > Date.now()) return false;
   return true;
@@ -260,9 +225,9 @@ async function suspendTab(tab) {
   if (!tab || !tab.id) return { error: msg("errInvalidTab") };
   if (isSuspendPage(tab.url)) return { error: msg("errAlreadySuspended") };
   if (isBlockedUrl(tab.url)) return { error: msg("errNotSuspendable") };
-  // Gizli sekmenin URL/başlığı storage.local'a ve yedeklere diske yazılırdı.
+  // A private tab's URL and title would be written to disk.
   if (tab.incognito) return { error: msg("errIncognito") };
-  // Hızlı çift Alt+Shift+S: navigasyon commit olmadan ikinci çağrı ikinci uuid üretirdi.
+  // A quick double Alt+Shift+S would create two records.
   if (suspendingTabs.has(tab.id)) return { error: msg("errSuspendInProgress") };
   suspendingTabs.add(tab.id);
   try {
@@ -273,20 +238,11 @@ async function suspendTab(tab) {
 }
 
 async function suspendTabUnguarded(tab) {
-  // Sabitlenmiş sekmeler manuel olarak (popup/Alt+Shift+S/context menu) suspend
-  // edilebilir — kullanıcı bunu bilinçli istiyor. Otomatik suspend ise pinned
-  // sekmeleri hâlâ atlıyor (bkz. autoSuspendCheck, satır ~612), o yüzden burada
-  // ayrıca bir engel gerekmiyor.
-
   const uuid        = generateUUID();
   const suspendedAt = new Date().toISOString();
 
-  // Sekme, storage yazımını beklemeden hemen suspend sayfasına geçiyor —
-  // sayfa kritik veriyi zaten URL parametrelerinden okuyor, storage sadece
-  // favicon gibi ekstra veriyi zenginleştiriyor. Büyümüş bir `suspended`
-  // blob'unun tamamını okuyup yazmak (getSuspended/setSuspended) navigasyondan
-  // ÖNCE yapılırsa, sekme sayısı arttıkça suspend sayfasının açılışı yavaşlar.
   const suspendUrl = buildSuspendUrl(uuid, tab.url, tab.title || tab.url, tab.favIconUrl || "");
+  // Navigate first: the placeholder reads its data from its own URL, so the tab does not wait for storage.
   await browser.tabs.update(tab.id, { url: suspendUrl });
 
   await mutateSuspended((suspended) => {
@@ -300,19 +256,11 @@ async function suspendTabUnguarded(tab) {
     };
   });
 
-  // Greyscale favicon üretimi (ağ isteği içerir) navigasyonu bloklamasın —
-  // arka planda hesaplanır, storage'a yazılınca suspend.js kendi
-  // storage.onChanged dinleyicisiyle sayfadaki ikonu günceller.
   const greyReady = updateGreyFavicon(uuid, tab.favIconUrl || "");
 
-  // Discard'ı, greyscale favicon sayfaya uygulanana kadar (en fazla FAVICON_TIMEOUT_MS)
-  // bekletiyoruz. Aksi halde discard, favicon hazır olmadan tetiklenirse sekme eklentinin
-  // düz ikonuyla donuyor — discard sonrası sayfa artık JS çalıştırmadığından bir daha
-  // güncellenemiyor ve bu, tarayıcı yeniden başlatıldığında da kalıcı oluyor. Bu promise'i
-  // faviconReadyPromises'e de kaydediyoruz çünkü discard iki farklı yoldan tetiklenebilir:
-  // burada (sayfa yüklendiğinde) ya da kullanıcı sekmeden uzaklaştığında (discardIfSuspended).
+  // Discarding before the grayscale icon is applied freezes the tab on the plain extension icon, a discarded page can no longer update it.
   const readyToDiscard = greyReady
-    .catch(() => {}) // storage/network hatası discard'ı asla engellemesin
+    .catch(() => {})
     .then(() => new Promise((resolve) => setTimeout(resolve, FAVICON_PERSIST_GRACE_MS)));
   faviconReadyPromises.set(tab.id, readyToDiscard);
   readyToDiscard.finally(() => {
@@ -321,7 +269,6 @@ async function suspendTabUnguarded(tab) {
 
   waitForTabToLoad(tab.id, suspendUrl, async () => {
     await readyToDiscard;
-    // Beklerken kullanıcı restore etmiş ya da sekmeyi kapatmış olabilir: taze durum.
     const fresh = await browser.tabs.get(tab.id).catch(() => null);
     if (!fresh || fresh.discarded || fresh.status === "loading" || !isSuspendPage(fresh.url)) return;
     if ((restoringUntil.get(tab.id) || 0) > Date.now()) return;
@@ -336,7 +283,7 @@ async function updateGreyFavicon(uuid, favIconUrl) {
   if (!greyFavIconUrl) return;
 
   await mutateSuspended((suspended) => {
-    if (!suspended[uuid]) return; // bu arada unsuspend edilmiş olabilir
+    if (!suspended[uuid]) return;
     suspended[uuid].greyFavIconUrl = greyFavIconUrl;
   });
 }
@@ -362,7 +309,7 @@ async function discardIfSuspended(tabId) {
   try {
     tab = await browser.tabs.get(tabId);
   } catch {
-    return; // Sekme kapanmış olabilir
+    return;
   }
 
   if (tab.discarded) return;
@@ -371,7 +318,6 @@ async function discardIfSuspended(tabId) {
   const pending = faviconReadyPromises.get(tabId);
   if (pending) await pending;
 
-  // Beklerken kullanıcı restore edip sekmeye dönmüş olabilir: taze durum + restore koruması.
   const fresh = await browser.tabs.get(tabId).catch(() => null);
   if (!isDiscardable(fresh)) return;
 
@@ -383,8 +329,6 @@ async function discardIfSuspended(tabId) {
   }
 }
 
-// ─── Unsuspend ────────────────────────────────────────────────────────────────
-
 async function unsuspendTab(tab) {
   if (!tab || !tab.id) return { error: msg("errInvalidTab") };
   if (!isSuspendPage(tab.url)) return { error: msg("errNotSuspended") };
@@ -394,10 +338,7 @@ async function unsuspendTab(tab) {
 
   const entry = await mutateSuspended((suspended) => suspended[uuid]);
 
-  // Storage kaydı tek doğruluk kaynağı DEĞİL: suspend URL'si orijinal adresi
-  // `url=` parametresinde taşıyor ve bu, storage'a hiç bağlı olmayan bir yol.
-  // Kayıt herhangi bir sebeple eksikse sekmeyi boş sayfaya göndermek yerine
-  // parametreden geri yüklüyoruz — aksi halde kullanıcı adresi tamamen kaybediyor.
+  // The record is not the only source of truth: the suspend URL carries the original address, so a lost record does not lose the tab.
   const originalUrl = entry?.originalUrl || urlParamOf(tab.url);
 
   if (!originalUrl) {
@@ -408,15 +349,12 @@ async function unsuspendTab(tab) {
   restoringUntil.set(tab.id, Date.now() + RESTORE_GUARD_MS);
   await browser.tabs.update(tab.id, { url: originalUrl });
 
-  // Silme navigasyondan SONRA: navigasyon başarısız olursa kayıt durmalı.
   if (!(await uuidInUseElsewhere(uuid, tab.id))) {
     await mutateSuspended((suspended) => { delete suspended[uuid]; });
   }
 
   return { success: true };
 }
-
-// ─── Toggle (kısayol tuşu) ────────────────────────────────────────────────────
 
 browser.commands.onCommand.addListener(async (command) => {
   if (command !== "toggle-suspend") return;
@@ -425,19 +363,13 @@ browser.commands.onCommand.addListener(async (command) => {
   if (!highlighted.length) return;
 
   if (highlighted.length > 1) {
-    // Çoklu seçim toggle'ı: seçimin TAMAMI askıdaysa hepsini geri yükle,
-    // aksi halde askıda olmayanları askıya al. Karışık seçimde suspend
-    // yönünü seçiyoruz — böylece "hepsini askıya al" alışkanlığı bozulmuyor
-    // ve yanlışlıkla 20 sekmeyi aynı anda yeniden yükletmek zorlaşıyor.
     const allSuspended = highlighted.every((tab) => isSuspendPage(tab.url));
 
-    // Tek sekmedeki hata diğerlerini durdurmasın.
     await Promise.allSettled(highlighted.map((tab) => {
       if (allSuspended) return unsuspendTab(tab);
       return isSuspendPage(tab.url) ? null : suspendTab(tab);
     }));
   } else {
-    // Tek sekme: toggle davranışı
     const tab = highlighted[0];
     if (isSuspendPage(tab.url)) {
       await unsuspendTab(tab);
@@ -446,8 +378,6 @@ browser.commands.onCommand.addListener(async (command) => {
     }
   }
 });
-
-// ─── Message handler ──────────────────────────────────────────────────────────
 
 browser.runtime.onMessage.addListener(async (message, sender) => {
   if (sender.id !== browser.runtime.id) return { error: msg("errUnknownSender") };
@@ -525,7 +455,6 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
   }
 
   if (action === "delete-backup") {
-    // Index değil timestamp: popup açıkken alarm yeni yedek ekleyip index'leri kaydırabilir.
     const { timestamp } = message;
     if (!timestamp) return { error: msg("errMissingTimestamp") };
     await mutateBackups((backups) => {
@@ -542,7 +471,6 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
     return { success: true, count: suspendedTabs.length };
   }
 
-  // Tüm workspace'lerdeki gerçek sekme sayısı (storage yerine gerçek sekme taraması)
   if (action === "get-stats") {
     const allTabs       = await browser.tabs.query({});
     const suspendedTabs = allTabs.filter(t => isSuspendPage(t.url));
@@ -553,7 +481,6 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
     };
   }
 
-  // Tüm açık sekmeleri dışa aktar — suspended sekmeler gerçek URL ile
   if (action === "get-all-tabs-for-export") {
     const [allTabs, suspended] = await Promise.all([
       browser.tabs.query({}),
@@ -595,7 +522,6 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
     return { tabs };
   }
 
-  // Otomatik askıya alma ayarları
   if (action === "get-auto-suspend-settings") {
     const settings = await getAutoSuspendSettings();
     return { settings };
@@ -623,8 +549,6 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
     return { success: true, backupIntervalMinutes };
   }
 });
-
-// ─── Backup sistemi ───────────────────────────────────────────────────────────
 
 async function createBackup() {
   const [allTabs, suspended] = await Promise.all([
@@ -690,7 +614,7 @@ async function getBackupIntervalMinutes() {
 async function ensureBackupAlarm() {
   const minutes  = await getBackupIntervalMinutes();
   const existing = await browser.alarms.get(BACKUP_ALARM);
-  // alarms.create aynı isimle geri sayımı SIFIRLAR: yalnız alarm yoksa ya da aralık değiştiyse oluştur.
+  // alarms.create with an existing name resets its countdown, so recreating it on every wake-up would stop periodic backups from ever firing.
   if (existing && existing.periodInMinutes === minutes) return;
   browser.alarms.create(BACKUP_ALARM, {
     periodInMinutes: minutes,
@@ -703,17 +627,11 @@ browser.alarms.onAlarm.addListener(async (alarm) => {
 
   if (alarm.name === BACKUP_ALARM) {
     await createBackup();
-    // Sadece tarayıcı başlangıcında değil, periyodik olarak da orphan
-    // temizliği yap — uzun süre kapatılmayan oturumlarda (pencere kapatma,
-    // sekme yarış durumları vb.) suspended storage'ın sınırsız büyümesini
-    // önler.
     await detectOrphanedSuspended();
   }
   if (alarm.name === ORPHAN_STARTUP_ALARM) await detectOrphanedSuspended();
   if (alarm.name === AUTO_SUSPEND_ALARM) await autoSuspendCheck();
 });
-
-// ─── Otomatik askıya alma ─────────────────────────────────────────────────────
 
 async function getAutoSuspendSettings() {
   const { autoSuspend = { enabled: false, thresholdMinutes: 30 } } =
@@ -744,8 +662,9 @@ async function autoSuspendCheck() {
 
   for (const tab of allTabs) {
     if (tab.pinned)              continue;
+    // tab.active is live, so every window keeps its own active tab.
     if (tab.active)              continue;
-    if (tab.audible)             continue; // müzik/görüntülü görüşme kesilmesin
+    if (tab.audible)             continue;
     if (tab.discarded)           continue;
     if (tab.incognito)           continue;
     if (isSuspendPage(tab.url))  continue;
@@ -755,17 +674,14 @@ async function autoSuspendCheck() {
     if (lastActive === undefined) continue;
 
     if (now - lastActive >= threshold) {
-      // Tek sekmedeki hata kalan sekmelerin işlenmesini durdurmasın.
       await suspendTab(tab).catch((err) => console.warn("[tab-suspender] automatic suspension failed:", err));
     }
   }
 }
 
-// ─── Önceki oturum orphan tespiti ────────────────────────────────────────────
-
 async function detectOrphanedSuspended() {
   const allTabs = await browser.tabs.query({});
-  const suspended = await mutateSuspended((s) => s); // zincir üzerinden tutarlı okuma
+  const suspended = await mutateSuspended((s) => s);
 
   const openUUIDs = new Set();
   for (const tab of allTabs) {
@@ -775,7 +691,6 @@ async function detectOrphanedSuspended() {
     }
   }
 
-  // Navigasyonu süren sekmede tab.url commit'e kadar eski adresi gösterir; yeni kayıtları atla.
   const cutoff   = Date.now() - ORPHAN_MIN_AGE_MS;
   const orphaned = Object.entries(suspended).filter(([uuid, entry]) =>
     !openUUIDs.has(uuid) && new Date(entry.suspendedAt).getTime() < cutoff);
@@ -802,19 +717,13 @@ async function detectOrphanedSuspended() {
     if (backups.length > MAX_BACKUPS) backups.splice(MAX_BACKUPS);
   });
 
-  // Silme yedek yazıldıktan SONRA ve zincir üzerinden: aradaki bir suspend
-  // işleminin yazdığı yeni kayıtları ezmemek için blob tekrar okunup
-  // yalnızca öksüz uuid'ler siliniyor.
   await mutateSuspended((current) => {
     for (const [uuid] of orphaned) delete current[uuid];
   });
 }
 
-// ─── Tab state ────────────────────────────────────────────────────────────────
-
-// Firefox unloads an idle background script and later reruns it from the top, but onInstalled
-// and onStartup do not fire again. State kept in module variables would be lost, so it lives
-// in storage.session (memory only, cleared when the browser closes).
+// Firefox unloads an idle background script and reruns it from the top later, but onInstalled and onStartup do not fire again.
+// Module variables would be lost, so idle clocks and tab positions live in storage.session (memory only, cleared when the browser closes).
 const TAB_STATE_KEY = "tabState";
 
 function emptyTabState() {
@@ -864,7 +773,6 @@ browser.tabs.onActivated.addListener(async ({ tabId }) => {
     previousTabId = st.activeTabId;
     st.activeTabId = tabId;
     st.lastActive[tabId] = Date.now();
-    // The idle clock of a tab also starts the moment you leave it.
     if (previousTabId !== null && previousTabId !== tabId) st.lastActive[previousTabId] = Date.now();
   });
 
@@ -896,8 +804,6 @@ browser.tabs.onCreated.addListener(async (tab) => {
   await refreshIndexCache(tab.windowId);
 });
 
-// ─── Tab closed ───────────────────────────────────────────────────────────────
-
 browser.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
   await ensureInitialized();
 
@@ -906,7 +812,7 @@ browser.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
     return;
   }
 
-  // Read and delete in one step, otherwise a queued write can make us miss this tab's URL and index.
+  // Read and delete in one step, a separate read can miss a queued write.
   let before = null;
   await mutateTabState((st) => {
     before = { url: st.urls[tabId], index: st.index[tabId], wasActive: st.activeTabId === tabId };
@@ -937,8 +843,6 @@ browser.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
   }
 });
 
-// ─── Startup ──────────────────────────────────────────────────────────────────
-
 async function initialize() {
   await ensureBackupAlarm();
 
@@ -952,14 +856,14 @@ async function initialize() {
     for (const tab of allTabs) {
       if (tab.url) st.urls[tab.id] = tab.url;
       st.index[tab.id] = { index: tab.index, windowId: tab.windowId };
-      // Never overwrite an existing value: this reruns on every wake-up, and resetting the idle clock each time would stop automatic suspension from ever firing.
+      // Never overwrite: this reruns on every wake-up, and resetting idle clocks would keep automatic suspension from ever firing.
       if (st.lastActive[tab.id] === undefined) st.lastActive[tab.id] = now;
       if (tab.active && st.activeTabId === null) st.activeTabId = tab.id;
     }
   });
 }
 
-// Only on install and browser start: running it on every wake-up would drop the record of a tab that closed while the script was unloaded.
+// Only on install and startup: on every wake-up it would drop the record of a tab that closed while the script was unloaded.
 async function pruneDeadTabState() {
   const allTabs = await browser.tabs.query({});
   await mutateTabState((st) => {
@@ -974,7 +878,7 @@ async function pruneDeadTabState() {
   });
 }
 
-// Every listener that touches tab state waits for this first; it is safe to call repeatedly.
+// Every listener that touches tab state awaits this first. Safe to call repeatedly.
 let initPromise = null;
 
 function ensureInitialized() {
@@ -1000,8 +904,6 @@ browser.runtime.onStartup.addListener(async () => {
   // Session restore may still be adding tabs; scanning now could delete valid records, so the scan runs from an alarm.
   browser.alarms.create(ORPHAN_STARTUP_ALARM, { delayInMinutes: 1 });
 });
-
-// ─── Context Menü ─────────────────────────────────────────────────────────────
 
 async function setupContextMenus() {
   await browser.menus.removeAll();

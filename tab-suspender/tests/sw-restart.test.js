@@ -1,12 +1,9 @@
 /**
- * Service worker yeniden baslatma testi.
+ * Service worker restart tests for the Chromium build.
  *
- * Bu portun 1 numarali riski: Chromium background service worker'i ~30 sn
- * bostan sonra oldurur, uyaninca top-level kod BASTAN calisir (modul
- * degiskenleri sifirlanir) ama onInstalled/onStartup TEKRAR FIRE ETMEZ.
- *
- * Test bunu birebir taklit ediyor: ayni kalici storage ile ikinci bir vm
- * realm'inde background.js'i tekrar yukluyor ve SADECE alarm'i tetikliyor.
+ * Chromium stops an idle background service worker and later reruns the whole script, but onInstalled and
+ * onStartup do not fire again. Each restart here loads background.js into a fresh vm realm that shares
+ * the same persistent storage and then fires only an alarm or a tab event.
  */
 'use strict';
 
@@ -33,16 +30,14 @@ function check(name, cond, extra) {
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 30));
-// FAVICON_PERSIST_GRACE_MS (350ms) + pay: discard yolunun gercekten
-// tamamlanmasini bekler. Kisa tick ile olcmek "discard edilmedi" turu
-// kontrolleri sahte-gecirir.
+// Long enough for the discard path to finish (FAVICON_PERSIST_GRACE_MS is 350 ms).
+// A short tick would let "was not discarded" checks pass for the wrong reason.
 const settle = () => new Promise((r) => setTimeout(r, 700));
 
-/** Tarayici tarafi: SW restart'lari boyunca YASAYAN durum. */
 function createBrowserWorld(tabs) {
   return {
     local: {},
-    session: {}, // gercekte de tarayici kapanana kadar yasar
+    session: {},
     tabs,
     updates: [],
     created: [],
@@ -51,12 +46,6 @@ function createBrowserWorld(tabs) {
   };
 }
 
-/**
- * Her "SW basladi" olayinda taze listener tablosu + taze modul scope'u.
- * opts.favicon: true -> favicon boru hatti (fetch/bitmap/canvas) gercekci bir
- * gecikmeyle BASARILI olur; toplu suspend'deki storage yarisini gorunur kilar.
- */
-/** Test yardimcilari: kayitlar `s:<uuid>` anahtarlarinda. */
 function seedSuspended(world, map) {
   for (const [uuid, entry] of Object.entries(map)) world.local['s:' + uuid] = entry;
 }
@@ -95,10 +84,9 @@ function bootServiceWorker(world, opts) {
       onMessage: ev(L.onMessage),
     },
     storage: {
-      // chrome.storage.local gercekte IPC uzerinden async. Gecikmesiz bir stub,
-      // read-modify-write yarislarini yapay olarak serilestirip gizler.
       local: {
         get: async (key) => {
+          // storage.local is async over IPC in a real browser. A stub without latency serializes read-modify-write races and hides them.
           await ioLatency();
           if (key === null || key === undefined) return clone(world.local);
           const keys = Array.isArray(key) ? key : [key];
@@ -157,9 +145,8 @@ function bootServiceWorker(world, opts) {
         const t = world.tabs.find((x) => x.id === id);
         if (!t) return null;
 
-        // Gercek navigasyon async: tabs.update hemen doner, URL sonra degisir
-        // ve onUpdated(status:"complete") daha da sonra gelir. Senkron stub
-        // bu araligi yok edip zamanlama hatalarini gizler.
+        // Real navigation is async: tabs.update returns first, the URL changes later and onUpdated(complete) later still.
+        // A synchronous stub would hide timing bugs.
         if (opts && opts.asyncNav && props.url) {
           const snapshot = clone(t);
           setTimeout(() => {
@@ -185,8 +172,6 @@ function bootServiceWorker(world, opts) {
     },
   };
 
-  // Ag/canvas yok: greyscale favicon yolu bilerek basarisiz olur, kod
-  // duz pause ikonuna dusmelidir - suspend akisi bundan etkilenmemeli.
   const sandbox = {
     chrome: chrome,
     console: console,
@@ -208,7 +193,7 @@ function bootServiceWorker(world, opts) {
     const noop = () => {};
     sandbox.Blob = Blob;
     sandbox.fetch = async () => {
-      await delay(40); // gercek bir ag/onbellek okumasi gibi
+      await delay(40);
       return { ok: true, headers: { get: () => null }, blob: async () => new Blob([new Uint8Array([1, 2, 3, 4])]) };
     };
     sandbox.AbortController = AbortController;
@@ -243,50 +228,46 @@ function bootServiceWorker(world, opts) {
   for (const fn of sw.L.onInstalled) await fn();
   await tick();
 
-  check('ilk acilis lastActive kaydediyor',
+  check('first start records lastActive',
     Object.keys((world.session.tabState || {}).lastActive || {}).length === 2,
     JSON.stringify(world.session.tabState));
-  check('otomatik suspend alarmi kuruldu', Boolean(sw.alarms['auto-suspend-check']));
-  check('context menusu kuruldu (5 giris)', Object.keys(world.menus).length === 5,
+  check('auto-suspend alarm is created', Boolean(sw.alarms['auto-suspend-check']));
+  check('context menu is created (5 entries)', Object.keys(world.menus).length === 5,
     Object.keys(world.menus).join(','));
-  check('menuler "tab" context KULLANMIYOR',
+  check('menus do NOT use the "tab" context',
     !Object.values(world.menus).some((m) => (m.contexts || []).indexOf('tab') !== -1));
 
-  // Zamanin gecmesi: 2 nolu sekme 20 dakikadir bosta
   world.session.tabState.lastActive['2'] = Date.now() - 20 * 60 * 1000;
   const staleBefore = world.session.tabState.lastActive['2'];
 
-  // ── SW olduruldu, yeniden basladi. onInstalled/onStartup FIRE ETMEZ.
   sw = bootServiceWorker(world);
   for (const fn of sw.L.onAlarm) await fn({ name: 'auto-suspend-check' });
   await tick();
 
-  check('restart sonrasi lastActive EZILMEDI',
+  check('lastActive is NOT overwritten after a restart',
     world.session.tabState.lastActive['2'] === staleBefore,
     'simdi: ' + world.session.tabState.lastActive['2']);
 
   const suspendedTwo = world.updates.find((u) =>
     u.id === 2 && typeof u.url === 'string' && u.url.indexOf(SUSPEND_PREFIX) === 0);
-  check('restart sonrasi otomatik suspend CALISTI (asil risk)',
+  check('auto-suspend still works after a restart (the main risk)',
     Boolean(suspendedTwo), JSON.stringify(world.updates));
 
-  check('aktif sekme (1) suspend EDILMEDI',
+  check('the active tab (1) is NOT suspended',
     !world.updates.some((u) => u.id === 1), JSON.stringify(world.updates));
 
-  // ── Mesaj sozlesmesi: Chromium sendResponse yolu
-  console.log('\n-- Mesaj sozlesmesi --');
+  console.log('\n-- Message contract --');
   const swMsg = bootServiceWorker(world);
   const listener = swMsg.L.onMessage[0];
   let responded;
   const rv = listener({ action: 'get-suspended-list' }, {}, (r) => { responded = r; });
-  check('onMessage kanali acik tutmak icin literal true donuyor', rv === true, String(rv));
+  check('onMessage returns a literal true to keep the channel open', rv === true, String(rv));
   await tick();
-  check('sendResponse gercekten cagrildi',
+  check('sendResponse was actually called',
     responded !== undefined && Object.prototype.hasOwnProperty.call(responded || {}, 'suspended'),
     JSON.stringify(responded));
 
-  // ── Menu etiketi: onShown olmadan onden guncelleme
-  console.log('\n-- Menu etiketi (onShown yok) --');
+  console.log('\n-- Menu label (no onShown) --');
   const world2 = createBrowserWorld([
     { id: 1, index: 0, windowId: 1, active: true, pinned: false,
       url: SUSPEND_PREFIX + '?id=x&url=https%3A%2F%2Fa.example%2F&t=A&ts=1', title: 'A' },
@@ -294,19 +275,18 @@ function bootServiceWorker(world, opts) {
   const sw2 = bootServiceWorker(world2);
   for (const fn of sw2.L.onInstalled) await fn();
   await tick();
-  check('askidaki aktif sekmede etiket "Geri Yukle"',
+  check('label reads "Restore" on a suspended active tab',
     /Restore/.test((world2.menus['toggle-suspend'] || {}).title || ''),
     (world2.menus['toggle-suspend'] || {}).title);
 
   world2.tabs[0].url = 'https://a.example/';
   for (const fn of sw2.L.tabActivated) await fn({ tabId: 1 });
   await tick();
-  check('normal sekmeye gecince etiket "Askiya Al"',
+  check('label reads "Suspend" after switching to a normal tab',
     /Suspend/.test((world2.menus['toggle-suspend'] || {}).title || ''),
     (world2.menus['toggle-suspend'] || {}).title);
 
-  // ── Kendi suspend sayfamiz "engelli sema" sanilmamali
-  console.log('\n-- chrome-extension: sema catismasi --');
+  console.log('\n-- chrome-extension: scheme clash --');
   const world3 = createBrowserWorld([
     { id: 1, index: 0, windowId: 1, active: true, pinned: false, highlighted: true,
       url: SUSPEND_PREFIX + '?id=y&url=https%3A%2F%2Fc.example%2F&t=C&ts=1', title: 'C' },
@@ -316,12 +296,11 @@ function bootServiceWorker(world, opts) {
   for (const fn of sw3.L.onInstalled) await fn();
   for (const fn of sw3.L.onCommand) await fn('toggle-suspend');
   await tick();
-  check('askidaki sekme geri yuklenebiliyor',
+  check('a suspended tab can be restored',
     world3.updates.some((u) => u.url === 'https://c.example/'),
     JSON.stringify(world3.updates));
 
-  // ── RAM bosaltma: SW restart sonrasi discard tekrari
-  console.log('\n-- Restart sonrasi discard tekrari --');
+  console.log('\n-- Discard retry after restart --');
   const world5 = createBrowserWorld([
     { id: 1, index: 0, windowId: 1, active: true, pinned: false, discarded: false,
       url: SUSPEND_PREFIX + '?id=z&url=https%3A%2F%2Fe.example%2F&t=E&ts=1', title: 'E' },
@@ -330,31 +309,27 @@ function bootServiceWorker(world, opts) {
   const sw5a = bootServiceWorker(world5);
   for (const fn of sw5a.L.onInstalled) await fn();
   await tick();
-  check('askidaki sekme aktifken activeTabId=1', world5.session.tabState.activeTabId === 1,
+  check('activeTabId is 1 while the suspended tab is active', world5.session.tabState.activeTabId === 1,
     String(world5.session.tabState.activeTabId));
 
-  // SW olduruldu. Kullanici 2 nolu sekmeye geciyor -> 1 artik arka planda,
-  // discard tekrari burada tetiklenmeli (Firefox aktif sekmeyi discard etmiyordu).
   const sw5b = bootServiceWorker(world5);
   world5.tabs[0].active = false;
   world5.tabs[1].active = true;
   for (const fn of sw5b.L.tabActivated) await fn({ tabId: 2 });
   await tick();
-  check('restart sonrasi eski aktif sekme icin discard tekrari tetiklendi',
+  check('discard is retried for the old active tab after a restart',
     world5.discarded.indexOf(1) !== -1, JSON.stringify(world5.discarded));
 
-  // ── onReplaced: tab id degisirse state yeniden anahtarlanmali
-  console.log('\n-- tabs.onReplaced yeniden anahtarlama --');
+  console.log('\n-- tabs.onReplaced re-keying --');
   const sw6 = bootServiceWorker(world5);
   for (const fn of sw6.L.tabReplaced) await fn(77, 1);
   await tick();
-  check('URL kaydi yeni tabId-ye tasindi',
+  check('the URL record moved to the new tabId',
     typeof world5.session.tabState.urls['77'] === 'string' &&
     world5.session.tabState.urls['1'] === undefined,
     JSON.stringify(world5.session.tabState.urls));
 
-  // ── Aktif sekme discard EDILMEMELI (bos ekran regresyonu)
-  console.log('\n-- Aktif sekmede bos ekran regresyonu --');
+  console.log('\n-- Blank screen on the active tab regression --');
   const world7 = createBrowserWorld([
     { id: 1, index: 0, windowId: 1, active: true, pinned: false, highlighted: true,
       discarded: false, url: 'https://g.example/', title: 'G' },
@@ -364,27 +339,22 @@ function bootServiceWorker(world, opts) {
   for (const fn of sw7.L.onInstalled) await fn();
   for (const fn of sw7.L.onCommand) await fn('toggle-suspend');
   await tick();
-  // Sekme suspend sayfasini yukledi. Discard yolu FAVICON_PERSIST_GRACE_MS
-  // (350ms) bekliyor - kisa bir tick ile olcersek "discard edilmedi" kontrolu
-  // sahte gecerdi, o yuzden tam olarak bekliyoruz.
   for (const fn of sw7.L.tabUpdated) await fn(1, { status: 'complete' }, world7.tabs[0]);
   await settle();
 
-  check('aktif sekme suspend oldu', world7.tabs[0].url.indexOf(SUSPEND_PREFIX) === 0,
+  check('the active tab was suspended', world7.tabs[0].url.indexOf(SUSPEND_PREFIX) === 0,
     world7.tabs[0].url);
-  check('AKTIF sekme discard EDILMEDI (bos ekran olusmaz)',
+  check('the ACTIVE tab is NOT discarded (no blank screen)',
     world7.discarded.indexOf(1) === -1, JSON.stringify(world7.discarded));
 
-  // Kullanici baska sekmeye geciyor -> RAM simdi bosalmali
   world7.tabs[0].active = false;
   world7.tabs[1].active = true;
   for (const fn of sw7.L.tabActivated) await fn({ tabId: 2 });
   await settle();
-  check('sekmeden uzaklasinca discard tetiklendi (RAM bosalir)',
+  check('discard fires once you switch away (memory is freed)',
     world7.discarded.indexOf(1) !== -1, JSON.stringify(world7.discarded));
 
-  // ── Restore suruyorken discard EDILMEMELI (restore + hizli sekme degisimi)
-  console.log('\n-- Restore sirasinda discard korumasi --');
+  console.log('\n-- Discard guard during restore --');
   const worldR = createBrowserWorld([
     { id: 1, index: 0, windowId: 1, active: false, pinned: false, discarded: false,
       url: SUSPEND_PREFIX + '?id=r&url=https%3A%2F%2Fr.example%2F&t=R&ts=1', title: 'R',
@@ -394,17 +364,16 @@ function bootServiceWorker(world, opts) {
   const swR = bootServiceWorker(worldR);
   for (const fn of swR.L.tabActivated) await fn({ tabId: 2 });
   await settle();
-  check('pendingUrl baska sayfaya giderken discard EDILMEDI',
+  check('no discard while pendingUrl points at another page',
     worldR.discarded.indexOf(1) === -1, JSON.stringify(worldR.discarded));
 
   delete worldR.tabs[0].pendingUrl;
   for (const fn of swR.L.tabActivated) await fn({ tabId: 2 });
   await settle();
-  check('bekleyen navigasyon yoksa askidaki arka plan sekmesi discard edildi',
+  check('a suspended background tab is discarded when no navigation is pending',
     worldR.discarded.indexOf(1) !== -1, JSON.stringify(worldR.discarded));
 
-  // ── Faz 2: yedek alarmi, timestamp ile silme, ortak uuid, uyuyan SW'de kapanan sekme
-  console.log('\n-- Faz 2 --');
+  console.log('\n-- Alarms, backups and shared records --');
   const worldP = createBrowserWorld([
     { id: 1, index: 0, windowId: 1, active: true, pinned: false, url: 'https://p.example/', title: 'P' },
   ]);
@@ -413,7 +382,7 @@ function bootServiceWorker(world, opts) {
   swP.alarms['tab-backup'] = preset;
   for (const fn of swP.L.onInstalled) await fn();
   await tick();
-  check('yedek alarmi service worker uyaninca SIFIRLANMADI',
+  check('the backup alarm is NOT reset when the service worker wakes up',
     swP.alarms['tab-backup'] === preset, JSON.stringify(swP.alarms['tab-backup']));
 
   worldP.local.backups = [
@@ -422,7 +391,7 @@ function bootServiceWorker(world, opts) {
   ];
   const delListener = swP.L.onMessage[0];
   await new Promise((resolve) => delListener({ action: 'delete-backup', timestamp: 't1' }, {}, resolve));
-  check('delete-backup timestamp ile dogru yedegi sildi',
+  check('delete-backup removed the right backup by timestamp',
     worldP.local.backups.length === 1 && worldP.local.backups[0].timestamp === 't2',
     JSON.stringify(worldP.local.backups.map((b) => b.timestamp)));
 
@@ -436,7 +405,7 @@ function bootServiceWorker(world, opts) {
   const swQ = bootServiceWorker(worldQ);
   for (const fn of swQ.L.onInstalled) await fn();
   await new Promise((resolve) => swQ.L.onMessage[0]({ action: 'unsuspend' }, { tab: worldQ.tabs[0] }, resolve));
-  check('cogaltilmis sekme geri yuklenince ortak kayit silinmedi',
+  check('restoring a duplicated tab did not delete the shared record',
     Boolean(readSuspended(worldQ).shared),
     JSON.stringify(readSuspended(worldQ)));
 
@@ -449,17 +418,15 @@ function bootServiceWorker(world, opts) {
   const swS1 = bootServiceWorker(worldS);
   for (const fn of swS1.L.onInstalled) await fn();
   await tick();
-  // SW uyurken sekme 1 kapaniyor; olay yeni SW ornegini uyandiriyor
   worldS.tabs = worldS.tabs.filter((t) => t.id !== 1);
   const swS2 = bootServiceWorker(worldS);
   for (const fn of swS2.L.tabRemoved) await fn(1, { isWindowClosing: false, windowId: 1 });
   await tick();
-  check('uyuyan SW uyaninca kapanan askidaki sekmenin kaydi silindi',
+  check('a suspended tab closed while the worker slept has its record removed on wake-up',
     !readSuspended(worldS).sleepy,
     JSON.stringify(readSuspended(worldS)));
 
-  // ── Faz 3: URL allowlist ve gonderici dogrulama
-  console.log('\n-- Faz 3 --');
+  console.log('\n-- URL allowlist and sender check --');
   const worldU = createBrowserWorld([
     { id: 1, index: 0, windowId: 1, active: true, pinned: false, url: 'https://u.example/', title: 'U' },
   ]);
@@ -468,17 +435,16 @@ function bootServiceWorker(world, opts) {
   for (const bad of ['DATA:text/html,<b>x</b>', ' javascript:alert(1)', 'file:///c:/x', 'chrome-extension://x/y.html', 'brave://settings']) {
     await send3({ action: 'restore-tab', url: bad, asSuspended: false });
   }
-  check('http(s) disi adresler restore-tab ile ACILMADI', worldU.created.length === 0, JSON.stringify(worldU.created));
+  check('non-http(s) addresses are NOT opened by restore-tab', worldU.created.length === 0, JSON.stringify(worldU.created));
   await send3({ action: 'restore-tab', url: 'https://ok.example/', asSuspended: false });
-  check('http(s) adres restore-tab ile acildi', worldU.created.length === 1, JSON.stringify(worldU.created));
+  check('an http(s) address is opened by restore-tab', worldU.created.length === 1, JSON.stringify(worldU.created));
   const foreign = await send3({ action: 'get-suspended-list' }, { id: 'baska-eklenti' });
-  check('yabanci gondericinin mesaji reddedildi', Boolean(foreign && foreign.error), JSON.stringify(foreign));
+  check('a message from a foreign sender is rejected', Boolean(foreign && foreign.error), JSON.stringify(foreign));
   const blockedSuspend = await new Promise((resolve) => swU.L.onMessage[0]({ action: 'suspend-active' }, {}, resolve));
-  check('http(s) sekme suspend edilebiliyor (allowlist yanlis engellemiyor)', blockedSuspend && blockedSuspend.success === true,
+  check('an http(s) tab can be suspended (the allowlist does not block it by mistake)', blockedSuspend && blockedSuspend.success === true,
     JSON.stringify(blockedSuspend));
 
-  // ── Faz 4: depolama migrasyonu (blob -> sekme basina anahtar)
-  console.log('\n-- Depolama migrasyonu --');
+  console.log('\n-- Storage migration --');
   const worldM = createBrowserWorld([
     { id: 1, index: 0, windowId: 1, active: true, pinned: false, url: 'https://m.example/', title: 'M' },
   ]);
@@ -492,22 +458,20 @@ function bootServiceWorker(world, opts) {
   for (const fn of swM.L.onInstalled) await fn();
   await tick();
   const migrated = readSuspended(worldM);
-  check('eski blob silindi', worldM.local.suspended === undefined, JSON.stringify(Object.keys(worldM.local)));
-  check('kayitlar sekme basina anahtara tasindi', Object.keys(migrated).sort().join() === 'old1,old2', JSON.stringify(Object.keys(migrated)));
-  check('gri ikon korundu', migrated.old1 && migrated.old1.greyFavIconUrl === 'data:image/png;base64,AAAA', JSON.stringify(migrated.old1 && Object.keys(migrated.old1)));
-  check('buyuk data: ikon kayittan atildi, kisa http(s) korundu',
+  check('the old blob was deleted', worldM.local.suspended === undefined, JSON.stringify(Object.keys(worldM.local)));
+  check('records moved to one key per tab', Object.keys(migrated).sort().join() === 'old1,old2', JSON.stringify(Object.keys(migrated)));
+  check('the grayscale icon was kept', migrated.old1 && migrated.old1.greyFavIconUrl === 'data:image/png;base64,AAAA', JSON.stringify(migrated.old1 && Object.keys(migrated.old1)));
+  check('a large data: icon was dropped from the record, a short http(s) one kept',
     migrated.old1.favIconUrl === '' && migrated.old2.favIconUrl === 'https://old2.example/f.ico',
     JSON.stringify([migrated.old1.favIconUrl.length, migrated.old2.favIconUrl]));
-  check('yedeklerdeki buyuk data: ikon atildi', worldM.local.backups[0].tabs[0].favIconUrl === '', String(worldM.local.backups[0].tabs[0].favIconUrl.length));
-  check('storageVersion yazildi', worldM.local.storageVersion === 2, String(worldM.local.storageVersion));
+  check('a large data: icon was dropped from backups', worldM.local.backups[0].tabs[0].favIconUrl === '', String(worldM.local.backups[0].tabs[0].favIconUrl.length));
+  check('storageVersion was written', worldM.local.storageVersion === 2, String(worldM.local.storageVersion));
   const swM2 = bootServiceWorker(worldM);
   for (const fn of swM2.L.onInstalled) await fn();
   await tick();
-  check('ikinci acilista migrasyon tekrar etmedi (idempotent)', Object.keys(readSuspended(worldM)).length === 2, JSON.stringify(Object.keys(readSuspended(worldM))));
+  check('the migration did not repeat on the second start (idempotent)', Object.keys(readSuspended(worldM)).length === 2, JSON.stringify(Object.keys(readSuspended(worldM))));
 
-  // ── Toplu suspend: `suspended` blob'unda kayip-guncelleme yarisi
-  // Kullanicinin yaptigi senaryo: tab bar'da shift ile hepsini sec + Alt+Shift+S.
-  console.log('\n-- Toplu suspend (12 sekme) --');
+  console.log('\n-- Bulk suspend (12 tabs) --');
   const N = 12;
   const manyTabs = [];
   for (let i = 1; i <= N; i++) {
@@ -528,34 +492,31 @@ function bootServiceWorker(world, opts) {
 
   const stored = readSuspended(world8);
   const uuids = Object.keys(stored);
-  check(N + ' sekmenin HEPSI `suspended` blobunda',
+  check(N + ' tabs ALL in the `suspended` blob',
     uuids.length === N, uuids.length + '/' + N + ' kayit kaldi');
 
   const withGrey = uuids.filter((u) => stored[u].greyFavIconUrl);
-  check('HEPSININ greyscale favicon-u yazildi (ikon tutarliligi)',
+  check('EVERY grayscale favicon was written (icon consistency)',
     withGrey.length === N, withGrey.length + '/' + N + ' ikon yazildi');
 
-  // ── Storage kaydi eksikse bile geri yukleme URL parametresinden calismali
-  console.log('\n-- Kayit eksik: URL parametresinden geri yukleme --');
+  console.log('\n-- Missing record: restore from the URL parameter --');
   const lostUrl = SUSPEND_PREFIX + '?id=lost&url=' +
     encodeURIComponent('https://kayip.example/makale') + '&t=Kayip&ts=1';
   const world9 = createBrowserWorld([
     { id: 1, index: 0, windowId: 1, active: true, pinned: false, highlighted: true,
       url: lostUrl, title: 'Kayip' },
   ]);
-  // kayit YOK (hic seed edilmedi)
   const sw9 = bootServiceWorker(world9);
   for (const fn of sw9.L.onInstalled) await fn();
   for (const fn of sw9.L.onCommand) await fn('toggle-suspend');
   await tick();
-  check('kayit eksikken bos sayfa DEGIL, dogru URL aciliyor',
+  check('with a missing record the correct URL opens, not a blank page',
     world9.updates.some((u) => u.url === 'https://kayip.example/makale'),
     JSON.stringify(world9.updates));
-  check('about:newtab-e dusulmedi',
+  check('did not fall back to about:newtab',
     !world9.updates.some((u) => u.url === 'about:newtab'),
     JSON.stringify(world9.updates));
 
-  // Kotu niyetli/bozuk parametre kendi suspend sayfamiza dongu yapmamali
   const loopUrl = SUSPEND_PREFIX + '?id=loop&url=' + encodeURIComponent(SUSPEND_PREFIX + '?id=x') + '&t=L&ts=1';
   const world10 = createBrowserWorld([
     { id: 1, index: 0, windowId: 1, active: true, pinned: false, highlighted: true,
@@ -565,12 +526,11 @@ function bootServiceWorker(world, opts) {
   for (const fn of sw10.L.onInstalled) await fn();
   for (const fn of sw10.L.onCommand) await fn('toggle-suspend');
   await tick();
-  check('suspend sayfasina geri donme dongusu reddedildi',
+  check('a loop back to the suspend page is refused',
     world10.updates.every((u) => String(u.url || '').indexOf(SUSPEND_PREFIX) !== 0),
     JSON.stringify(world10.updates));
 
-  // ── Coklu secimde toplu geri yukleme
-  console.log('\n-- Toplu unsuspend (coklu secim) --');
+  console.log('\n-- Bulk restore (multi-selection) --');
   const susUrl = (i) => SUSPEND_PREFIX + '?id=u' + i + '&url=' +
     encodeURIComponent('https://geri.example/' + i) + '&t=G' + i + '&ts=1';
 
@@ -590,13 +550,12 @@ function bootServiceWorker(world, opts) {
 
   const geri = [1, 2, 3, 4].filter((i) =>
     world11.updates.some((u) => u.id === i && u.url === 'https://geri.example/' + i));
-  check('hepsi askidayken 4 sekmenin 4-u de geri yuklendi',
+  check('with all suspended, all 4 tabs were restored',
     geri.length === 4, 'geri yuklenen: ' + geri.join(','));
-  check('geri yuklenen kayitlar storage-dan silindi',
+  check('restored records were removed from storage',
     Object.keys(readSuspended(world11)).length === 0,
     JSON.stringify(Object.keys(readSuspended(world11))));
 
-  // Karisik secim: suspend yonu secilmeli, askidakilere DOKUNULMAMALI
   const mixed = [
     { id: 1, index: 0, windowId: 1, active: true, highlighted: true, pinned: false,
       url: susUrl(1), title: 'G1' },
@@ -609,15 +568,14 @@ function bootServiceWorker(world, opts) {
   for (const fn of sw12.L.onInstalled) await fn();
   for (const fn of sw12.L.onCommand) await fn('toggle-suspend');
   await tick();
-  check('karisik secimde acik sekme askiya alindi',
+  check('in a mixed selection the open tab was suspended',
     world12.updates.some((u) => u.id === 2 && String(u.url).indexOf(SUSPEND_PREFIX) === 0),
     JSON.stringify(world12.updates));
-  check('karisik secimde askidaki sekme geri YUKLENMEDI',
+  check('in a mixed selection the suspended tab was NOT restored',
     !world12.updates.some((u) => u.id === 1),
     JSON.stringify(world12.updates));
 
-  // ── Suspend, greyscale favicon uretimi basarisiz olsa bile calismali
-  console.log('\n-- Favicon uretimi basarisiz (offline) --');
+  console.log('\n-- Favicon generation fails (offline) --');
   const world4 = createBrowserWorld([
     { id: 1, index: 0, windowId: 1, active: true, pinned: false, highlighted: true,
       url: 'https://d.example/', title: 'D', favIconUrl: 'https://d.example/f.ico' },
@@ -626,12 +584,12 @@ function bootServiceWorker(world, opts) {
   for (const fn of sw4.L.onInstalled) await fn();
   for (const fn of sw4.L.onCommand) await fn('toggle-suspend');
   await tick();
-  check('favicon uretilemese de suspend oldu',
+  check('suspend works even when the favicon cannot be generated',
     world4.updates.some((u) => typeof u.url === 'string' && u.url.indexOf(SUSPEND_PREFIX) === 0),
     JSON.stringify(world4.updates));
 
   console.log('\n' + (fail === 0
-    ? 'TUM TESTLER GECTI (' + pass + ')'
-    : fail + ' TEST BASARISIZ (' + pass + ' gecti)'));
+    ? 'ALL TESTS PASSED (' + pass + ')'
+    : fail + ' TESTS FAILED (' + pass + ' passed)'));
   process.exit(fail === 0 ? 0 : 1);
 })();

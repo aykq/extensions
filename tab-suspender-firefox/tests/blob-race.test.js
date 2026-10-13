@@ -1,12 +1,8 @@
 /**
- * Zen Tab Suspender — `suspended` blob testleri.
+ * Tests for the Firefox build: bulk suspend without lost updates, restoring when a record is missing,
+ * bulk restore from a multi-selection, discard rules, automatic suspension rules and background restarts.
  *
- * Brave portunda bulunan üç hata bu sürüme de taşındı; bu test onları koruyor:
- *   1. Toplu suspend'de kayıp güncelleme (blob serileştirilmemişti)
- *   2. Storage kaydı eksikken geri yüklemenin boş sayfa açması
- *   3. Çoklu seçimde toplu geri yükleme olmaması
- *
- * Çalıştırma:  node tests/blob-race.test.js
+ * Run:  node tests/blob-race.test.js
  */
 'use strict';
 
@@ -33,23 +29,21 @@ function check(name, cond, extra) {
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 40));
+// Long enough for the discard path to finish (FAVICON_PERSIST_GRACE_MS is 350 ms).
+// A short tick would let "was not discarded" checks pass for the wrong reason.
 const settle = () => new Promise((r) => setTimeout(r, 700));
 
 function createBrowserWorld(tabs) {
   return { local: {}, session: {}, tabs, updates: [], created: [], discarded: [], menus: {} };
 }
 
-/**
- * opts.favicon:        favicon boru hattı (fetch/bitmap/canvas/FileReader) başarılı olur
- * opts.storageLatency: storage.local'a ms cinsinden gecikme. Gecikmesiz bir stub
- *                      read-modify-write yarışlarını yapay olarak serileştirip GİZLER.
- */
 function boot(world, opts) {
   const L = {
     onInstalled: [], onStartup: [], onMessage: [], onAlarm: [], onCommand: [],
     tabActivated: [], tabUpdated: [], tabMoved: [], tabCreated: [], tabRemoved: [],
     menuShown: [], menuClicked: [],
   };
+  // A storage stub without latency serializes read-modify-write races and hides them.
   const ioLatency = (opts && opts.storageLatency)
     ? () => new Promise((r) => setTimeout(r, opts.storageLatency))
     : () => Promise.resolve();
@@ -158,8 +152,6 @@ function boot(world, opts) {
         convertToBlob: async () => new Blob([new Uint8Array([137, 80, 78, 71])]),
       };
     };
-    // Firefox sürümü data URL'i FileReader ile üretiyor (Chromium portunda
-    // arrayBuffer+btoa ile değiştirilmişti; burada olduğu gibi bırakıldı).
     sandbox.FileReader = function () {
       this.readAsDataURL = () => {
         this.result = 'data:image/png;base64,iVBORw0KGgo=';
@@ -175,8 +167,7 @@ function boot(world, opts) {
 }
 
 (async () => {
-  // ── 1. Toplu suspend: kayıp güncelleme
-  console.log('\n-- Toplu suspend (12 sekme) --');
+  console.log('\n-- Bulk suspend (12 tabs) --');
   const N = 12;
   const many = [];
   for (let i = 1; i <= N; i++) {
@@ -196,14 +187,13 @@ function boot(world, opts) {
 
   const stored = w1.local.suspended || {};
   const uuids = Object.keys(stored);
-  check(N + ' sekmenin HEPSI `suspended` blobunda',
+  check(N + ' tabs ALL in the `suspended` blob',
     uuids.length === N, uuids.length + '/' + N);
   const withGrey = uuids.filter((u) => stored[u].greyFavIconUrl);
-  check('HEPSININ greyscale favicon-u yazildi (ikon tutarliligi)',
+  check('EVERY grayscale favicon was written (icon consistency)',
     withGrey.length === N, withGrey.length + '/' + N + ' ikon yazildi');
 
-  // ── 2. Kayıt eksikken URL parametresinden geri yükleme
-  console.log('\n-- Kayit eksik: URL parametresinden geri yukleme --');
+  console.log('\n-- Missing record: restore from the URL parameter --');
   const lostUrl = SUSPEND_PREFIX + '?id=lost&url=' +
     encodeURIComponent('https://kayip.example/makale') + '&t=Kayip&ts=1';
   const w2 = createBrowserWorld([
@@ -215,10 +205,10 @@ function boot(world, opts) {
   for (const fn of sw2.L.onInstalled) await fn();
   for (const fn of sw2.L.onCommand) await fn('toggle-suspend');
   await tick();
-  check('kayit eksikken bos sayfa DEGIL, dogru URL aciliyor',
+  check('with a missing record the correct URL opens, not a blank page',
     w2.updates.some((u) => u.url === 'https://kayip.example/makale'),
     JSON.stringify(w2.updates));
-  check('about:newtab-e dusulmedi',
+  check('did not fall back to about:newtab',
     !w2.updates.some((u) => u.url === 'about:newtab'), JSON.stringify(w2.updates));
 
   const loopUrl = SUSPEND_PREFIX + '?id=loop&url=' +
@@ -232,11 +222,10 @@ function boot(world, opts) {
   for (const fn of sw3.L.onInstalled) await fn();
   for (const fn of sw3.L.onCommand) await fn('toggle-suspend');
   await tick();
-  check('suspend sayfasina geri donme dongusu reddedildi',
+  check('a loop back to the suspend page is refused',
     w3.updates.every((u) => String(u.url || '').indexOf(SUSPEND_PREFIX) !== 0),
     JSON.stringify(w3.updates));
 
-  // ── 2b. Background script unloaded and rerun (Firefox event page): idle clocks must survive
   console.log('\n-- Background restart keeps idle clocks --');
   const w2b = createBrowserWorld([
     { id: 1, index: 0, windowId: 1, active: true, highlighted: true, pinned: false,
@@ -248,7 +237,7 @@ function boot(world, opts) {
   const sw2b = boot(w2b);
   for (const fn of sw2b.L.onInstalled) await fn();
   w2b.session.tabState.lastActive[2] = Date.now() - 20 * 60 * 1000;
-  const sw2c = boot(w2b); // same storage, fresh module state, no onInstalled or onStartup
+  const sw2c = boot(w2b);
   for (const fn of sw2c.L.onAlarm) await fn({ name: 'auto-suspend-check' });
   await tick();
   check('after a restart the idle tab is still auto-suspended',
@@ -258,8 +247,7 @@ function boot(world, opts) {
   check('a restart does not reset the idle clock of other tabs',
     w2b.session.tabState.lastActive[2] <= Date.now() - 19 * 60 * 1000 || w2b.updates.length > 0);
 
-  // ── 3. Çoklu seçimde toplu geri yükleme
-  console.log('\n-- Toplu unsuspend (coklu secim) --');
+  console.log('\n-- Bulk restore (multi-selection) --');
   const susUrl = (i) => SUSPEND_PREFIX + '?id=u' + i + '&url=' +
     encodeURIComponent('https://geri.example/' + i) + '&t=G' + i + '&ts=1';
   const allSus = [];
@@ -277,9 +265,9 @@ function boot(world, opts) {
   await tick();
   const geri = [1, 2, 3, 4].filter((i) =>
     w4.updates.some((u) => u.id === i && u.url === 'https://geri.example/' + i));
-  check('hepsi askidayken 4 sekmenin 4-u de geri yuklendi',
+  check('with all suspended, all 4 tabs were restored',
     geri.length === 4, 'geri yuklenen: ' + geri.join(','));
-  check('geri yuklenen kayitlar storage-dan silindi',
+  check('restored records were removed from storage',
     Object.keys(w4.local.suspended || {}).length === 0,
     JSON.stringify(Object.keys(w4.local.suspended || {})));
 
@@ -294,14 +282,13 @@ function boot(world, opts) {
   for (const fn of sw5.L.onInstalled) await fn();
   for (const fn of sw5.L.onCommand) await fn('toggle-suspend');
   await tick();
-  check('karisik secimde acik sekme askiya alindi',
+  check('in a mixed selection the open tab was suspended',
     w5.updates.some((u) => u.id === 2 && String(u.url).indexOf(SUSPEND_PREFIX) === 0),
     JSON.stringify(w5.updates));
-  check('karisik secimde askidaki sekme geri YUKLENMEDI',
+  check('in a mixed selection the suspended tab was NOT restored',
     !w5.updates.some((u) => u.id === 1), JSON.stringify(w5.updates));
 
-  // ── 4. Pinned sekmeler manuel suspend edilebilmeli (2026-07-15 davranisi)
-  console.log('\n-- Pinned sekme korumasi --');
+  console.log('\n-- Pinned tab handling --');
   const w6 = createBrowserWorld([
     { id: 1, index: 0, windowId: 1, active: true, highlighted: true, pinned: true,
       url: 'https://pinli.example/', title: 'Pinli' },
@@ -310,17 +297,15 @@ function boot(world, opts) {
   for (const fn of sw6.L.onInstalled) await fn();
   for (const fn of sw6.L.onCommand) await fn('toggle-suspend');
   await tick();
-  check('pinli sekme manuel suspend edilebiliyor',
+  check('a pinned tab can be suspended by hand',
     w6.updates.some((u) => String(u.url).indexOf(SUSPEND_PREFIX) === 0),
     JSON.stringify(w6.updates));
-  check('suspend pinned durumuna dokunmadi',
+  check('suspending did not touch the pinned state',
     !w6.updates.some((u) => 'pinned' in u), JSON.stringify(w6.updates));
 
-  // ── 5. Brave elden geçirmesinden taşınan düzeltmeler (13-10-2026)
-  console.log('\n-- Brave düzeltmeleri (Zen portu) --');
+  console.log('\n-- Fixes ported from the Chromium build --');
   const msg = (swx, message, sender) => swx.L.onMessage[0](message, sender || {});
 
-  // 5a) çift decode: % içeren URL bozulmamalı (kayıt yok -> URL parametresinden dışa aktarma)
   const pctUrl = SUSPEND_PREFIX + '?id=pct&url=' + encodeURIComponent('https://a.example/?q=100%25') +
     '&t=' + encodeURIComponent('50% off') + '&ts=1';
   const wD = createBrowserWorld([
@@ -328,37 +313,33 @@ function boot(world, opts) {
   ]);
   const swD = boot(wD);
   const exp = await msg(swD, { action: 'get-all-tabs-for-export' });
-  check('% iceren URL ve baslik cift decode ile bozulmadi',
+  check('a URL and title containing % survive without double decoding',
     exp.tabs && exp.tabs[0] && exp.tabs[0].url === 'https://a.example/?q=100%25' && exp.tabs[0].title === '50% off',
     JSON.stringify(exp));
 
-  // 5b) yedek alarmı sıfırlanmıyor
   const wA = createBrowserWorld([{ id: 1, index: 0, windowId: 1, active: true, pinned: false, url: 'https://p.example/', title: 'P' }]);
   const swA = boot(wA);
   const preset = { periodInMinutes: 5, delayInMinutes: 5, marker: true };
   swA.alarms['tab-backup'] = preset;
   for (const fn of swA.L.onInstalled) await fn();
   await tick();
-  check('yedek alarmi sifirlanmadi', swA.alarms['tab-backup'] === preset, JSON.stringify(swA.alarms['tab-backup']));
+  check('the backup alarm was not reset', swA.alarms['tab-backup'] === preset, JSON.stringify(swA.alarms['tab-backup']));
 
-  // 5c) delete-backup timestamp ile
   wA.local.backups = [{ timestamp: 't2', tabCount: 0, tabs: [] }, { timestamp: 't1', tabCount: 0, tabs: [] }];
   await msg(swA, { action: 'delete-backup', timestamp: 't1' });
-  check('delete-backup timestamp ile dogru yedegi sildi',
+  check('delete-backup removed the right backup by timestamp',
     wA.local.backups.length === 1 && wA.local.backups[0].timestamp === 't2',
     JSON.stringify(wA.local.backups.map((b) => b.timestamp)));
 
-  // 5d) http(s) allowlist + gönderici doğrulama
   for (const bad of ['DATA:text/html,<b>x</b>', ' javascript:alert(1)', 'file:///c:/x', 'moz-extension://x/y.html', 'about:config']) {
     await msg(swA, { action: 'restore-tab', url: bad, asSuspended: false });
   }
-  check('http(s) disi adresler restore-tab ile ACILMADI', wA.created.length === 0, JSON.stringify(wA.created));
+  check('non-http(s) addresses are NOT opened by restore-tab', wA.created.length === 0, JSON.stringify(wA.created));
   await msg(swA, { action: 'restore-tab', url: 'https://ok.example/', asSuspended: false });
-  check('http(s) adres restore-tab ile acildi', wA.created.length === 1, JSON.stringify(wA.created));
+  check('an http(s) address is opened by restore-tab', wA.created.length === 1, JSON.stringify(wA.created));
   const foreign = await msg(swA, { action: 'get-backups' }, { id: 'baska-eklenti' });
-  check('yabanci gondericinin mesaji reddedildi', Boolean(foreign && foreign.error), JSON.stringify(foreign));
+  check('a message from a foreign sender is rejected', Boolean(foreign && foreign.error), JSON.stringify(foreign));
 
-  // 5e) çoğaltılmış sekme: ortak kayıt silinmez
   const wQ = createBrowserWorld([
     { id: 1, index: 0, windowId: 1, active: true, pinned: false,
       url: SUSPEND_PREFIX + '?id=shared&url=https%3A%2F%2Fq.example%2F&t=Q&ts=1', title: 'Q' },
@@ -369,10 +350,9 @@ function boot(world, opts) {
   const swQ = boot(wQ);
   for (const fn of swQ.L.onInstalled) await fn();
   await msg(swQ, { action: 'unsuspend' }, { tab: wQ.tabs[0] });
-  check('cogaltilmis sekme geri yuklenince ortak kayit silinmedi',
+  check('restoring a duplicated tab did not delete the shared record',
     Boolean(wQ.local.suspended && wQ.local.suspended.shared), JSON.stringify(wQ.local.suspended));
 
-  // 5f) restore sürerken (pendingUrl / loading) discard EDİLMEZ, bitince edilir
   const wR = createBrowserWorld([
     { id: 1, index: 0, windowId: 1, active: true, pinned: false, discarded: false, status: 'complete',
       url: SUSPEND_PREFIX + '?id=r&url=https%3A%2F%2Fr.example%2F&t=R&ts=1', title: 'R' },
@@ -385,7 +365,7 @@ function boot(world, opts) {
   wR.tabs[1].active = true;
   for (const fn of swR.L.tabActivated) await fn({ tabId: 2 });
   await settle();
-  check('yuklenmekte olan (restore suren) sekme discard EDILMEDI', wR.discarded.indexOf(1) === -1, JSON.stringify(wR.discarded));
+  check('a tab that is still loading (restore in progress) is NOT discarded', wR.discarded.indexOf(1) === -1, JSON.stringify(wR.discarded));
 
   const wR2 = createBrowserWorld([
     { id: 1, index: 0, windowId: 1, active: true, pinned: false, discarded: false, status: 'complete',
@@ -395,12 +375,12 @@ function boot(world, opts) {
   const swR2 = boot(wR2);
   for (const fn of swR2.L.onInstalled) await fn();
   await tick();
-  await msg(swR2, { action: 'unsuspend' }, { tab: wR2.tabs[0] }); // restore baslar; stub URL'i hemen degistirmez
-  wR2.tabs[0].url = SUSPEND_PREFIX + '?id=r2&url=https%3A%2F%2Fr.example%2F&t=R&ts=1'; // commit olmadi: hala suspend sayfasi
+  await msg(swR2, { action: 'unsuspend' }, { tab: wR2.tabs[0] });
+  wR2.tabs[0].url = SUSPEND_PREFIX + '?id=r2&url=https%3A%2F%2Fr.example%2F&t=R&ts=1';
   wR2.tabs[0].active = false; wR2.tabs[1].active = true;
   for (const fn of swR2.L.tabActivated) await fn({ tabId: 2 });
   await settle();
-  check('restore korumasi: commit oncesi sekme degisince discard EDILMEDI', wR2.discarded.indexOf(1) === -1, JSON.stringify(wR2.discarded));
+  check('restore guard: no discard when the tab is switched before commit', wR2.discarded.indexOf(1) === -1, JSON.stringify(wR2.discarded));
 
   const wR3 = createBrowserWorld([
     { id: 1, index: 0, windowId: 1, active: true, pinned: false, discarded: false, status: 'complete',
@@ -413,9 +393,8 @@ function boot(world, opts) {
   wR3.tabs[0].active = false; wR3.tabs[1].active = true;
   for (const fn of swR3.L.tabActivated) await fn({ tabId: 2 });
   await settle();
-  check('normal durumda askidaki arka plan sekmesi discard edildi', wR3.discarded.indexOf(1) !== -1, JSON.stringify(wR3.discarded));
+  check('normally a suspended background tab is discarded', wR3.discarded.indexOf(1) !== -1, JSON.stringify(wR3.discarded));
 
-  // 5g) otomatik askıya alma: sesli sekme atlanır, hata turu kesmez
   const wT = createBrowserWorld([
     { id: 1, index: 0, windowId: 1, active: true, pinned: false, url: 'https://a.example/', title: 'A' },
     { id: 2, index: 1, windowId: 1, active: false, pinned: false, audible: true, url: 'https://ses.example/', title: 'Ses' },
@@ -427,20 +406,19 @@ function boot(world, opts) {
   await tick();
   for (const fn of swT.L.onAlarm) await fn({ name: 'auto-suspend-check' });
   await tick();
-  check('sesli sekme otomatik askiya ALINMADI', !wT.updates.some((u) => u.id === 2), JSON.stringify(wT.updates));
-  check('sessiz sekme otomatik askiya alindi', wT.updates.some((u) => u.id === 3), JSON.stringify(wT.updates));
+  check('an audible tab is NOT auto-suspended', !wT.updates.some((u) => u.id === 2), JSON.stringify(wT.updates));
+  check('a silent tab is auto-suspended', wT.updates.some((u) => u.id === 3), JSON.stringify(wT.updates));
 
-  // 5h) gizli sekme askiya alinmaz
   const wI = createBrowserWorld([
     { id: 1, index: 0, windowId: 1, active: true, pinned: false, incognito: true, url: 'https://gizli.example/', title: 'Gizli' },
   ]);
   const swI = boot(wI);
   for (const fn of swI.L.onInstalled) await fn();
   const rI = await msg(swI, { action: 'suspend-active' });
-  check('gizli sekme askiya ALINMADI', Boolean(rI && rI.error) && wI.updates.length === 0, JSON.stringify([rI, wI.updates]));
+  check('a private tab is NOT suspended', Boolean(rI && rI.error) && wI.updates.length === 0, JSON.stringify([rI, wI.updates]));
 
   console.log('\n' + (fail === 0
-    ? 'TUM TESTLER GECTI (' + pass + ')'
-    : fail + ' TEST BASARISIZ (' + pass + ' gecti)'));
+    ? 'ALL TESTS PASSED (' + pass + ')'
+    : fail + ' TESTS FAILED (' + pass + ' passed)'));
   process.exit(fail === 0 ? 0 : 1);
 })();
