@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "__MSG_extName__",
+  "version": "1.1.0",
+  "description": "__MSG_extDescription__",
+  "permissions": [
+    "tabs",
+    "storage",
+    "alarms",
+    "contextMenus",
+    "favicon"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/16.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    }
+  },
+  "commands": {
+    "toggle-suspend": {
+      "suggested_key": {
+        "default": "Alt+Shift+S"
+      },
+      "description": "__MSG_cmdToggleDescription__"
+    }
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "minimum_chrome_version": "116",
+  "default_locale": "en",
+  "homepage_url": "https://github.com/aykq/extensions/tree/main/tab-suspender"
+}

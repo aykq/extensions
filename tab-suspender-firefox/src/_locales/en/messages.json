@@ -1,0 +1,314 @@
+{
+  "extName": {
+    "message": "Tab Suspender"
+  },
+  "extDescription": {
+    "message": "Suspend inactive tabs to free memory. Automatic suspension, scheduled backups and one-click restore."
+  },
+  "cmdToggleDescription": {
+    "message": "Suspend or restore the active tab"
+  },
+  "errInvalidTab": {
+    "message": "Invalid tab."
+  },
+  "errAlreadySuspended": {
+    "message": "The tab is already suspended."
+  },
+  "errNotSuspendable": {
+    "message": "This kind of tab cannot be suspended."
+  },
+  "errIncognito": {
+    "message": "Private tabs are not suspended."
+  },
+  "errSuspendInProgress": {
+    "message": "The tab is already being suspended."
+  },
+  "errNotSuspended": {
+    "message": "The tab is not suspended."
+  },
+  "errNoId": {
+    "message": "Could not find the suspend ID."
+  },
+  "errNoOriginalUrl": {
+    "message": "The original address of this tab could not be found."
+  },
+  "errUnknownSender": {
+    "message": "Unknown sender."
+  },
+  "errNoSenderTab": {
+    "message": "Sender tab not found."
+  },
+  "errNoActiveTab": {
+    "message": "No active tab found."
+  },
+  "errCannotRestore": {
+    "message": "This address cannot be restored."
+  },
+  "errMissingTimestamp": {
+    "message": "Backup timestamp is missing."
+  },
+  "menuSuspend": {
+    "message": "⏸  Suspend tab"
+  },
+  "menuRestore": {
+    "message": "▶  Restore tab"
+  },
+  "menuBackupNow": {
+    "message": "💾  Back up now"
+  },
+  "menuShowBackups": {
+    "message": "📋  Show backups"
+  },
+  "statTotal": {
+    "message": "Total"
+  },
+  "statActive": {
+    "message": "Active"
+  },
+  "statSuspended": {
+    "message": "Suspended"
+  },
+  "exportAllLabel": {
+    "message": "Export all tabs"
+  },
+  "exportTxtTitle": {
+    "message": "Download the URL list as .txt"
+  },
+  "exportJsonTitle": {
+    "message": "Download as JSON"
+  },
+  "btnSuspendActive": {
+    "message": "Suspend Active Tab"
+  },
+  "btnUnsuspendAll": {
+    "message": "Restore All Suspended Tabs"
+  },
+  "updateHint": {
+    "message": "⚠ Run before updating"
+  },
+  "updateHintTitle": {
+    "message": "Run this before updating the extension"
+  },
+  "sectionBackups": {
+    "message": "Backups"
+  },
+  "btnBackupNow": {
+    "message": "Back Up Now"
+  },
+  "emptyBackups": {
+    "message": "No backups yet."
+  },
+  "emptyBackupsSub": {
+    "message": "Backups are taken automatically."
+  },
+  "sectionSettings": {
+    "message": "Settings"
+  },
+  "settingAutoSuspend": {
+    "message": "Automatic suspension"
+  },
+  "settingThreshold": {
+    "message": "Inactivity time"
+  },
+  "opt15": {
+    "message": "15 minutes"
+  },
+  "opt30": {
+    "message": "30 minutes"
+  },
+  "opt60": {
+    "message": "1 hour"
+  },
+  "opt120": {
+    "message": "2 hours"
+  },
+  "settingBackupInterval": {
+    "message": "Backup interval"
+  },
+  "unitMinShort": {
+    "message": "min"
+  },
+  "btnBack": {
+    "message": "Back"
+  },
+  "btnRestoreAll": {
+    "message": "Restore All"
+  },
+  "tabsCount": {
+    "message": "$P1$ tabs",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      }
+    }
+  },
+  "tabsCountSuspended": {
+    "message": "$P1$ tabs · $P2$ suspended",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      },
+      "p2": {
+        "content": "$2"
+      }
+    }
+  },
+  "titleDelete": {
+    "message": "Delete"
+  },
+  "toastBackupDeleted": {
+    "message": "Backup deleted"
+  },
+  "badgeSuspended": {
+    "message": "Suspended"
+  },
+  "titleOpen": {
+    "message": "Open"
+  },
+  "toastTabOpened": {
+    "message": "Tab opened"
+  },
+  "expBackupTitle": {
+    "message": "# Tab Suspender: Backup Export"
+  },
+  "expAllTitle": {
+    "message": "# Tab Suspender: All Tabs"
+  },
+  "expDate": {
+    "message": "# Date: $P1$",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      }
+    }
+  },
+  "expTabCount": {
+    "message": "# Tabs: $P1$",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      }
+    }
+  },
+  "expSuspendedCount": {
+    "message": "# Suspended: $P1$",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      }
+    }
+  },
+  "expMarkerSuspended": {
+    "message": "[SUSPENDED]"
+  },
+  "toastTabsFailed": {
+    "message": "Could not get the tabs"
+  },
+  "toastTxtDownloaded": {
+    "message": "TXT downloaded"
+  },
+  "toastJsonDownloaded": {
+    "message": "JSON downloaded"
+  },
+  "backupIntervalInfo": {
+    "message": "Backups are taken automatically every $P1$ minutes.",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      }
+    }
+  },
+  "toastNoSuspended": {
+    "message": "No suspended tabs"
+  },
+  "toastTabsRestored": {
+    "message": "$P1$ tabs restored",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      }
+    }
+  },
+  "toastTabSuspended": {
+    "message": "Tab suspended"
+  },
+  "toastBackupTaken": {
+    "message": "Backup created"
+  },
+  "confirmRestoreAll": {
+    "message": "$P1$ tabs will be opened as new tabs.\nContinue?",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      }
+    }
+  },
+  "toastAllTabsOpened": {
+    "message": "All tabs opened"
+  },
+  "suspendPageTitle": {
+    "message": "Suspended"
+  },
+  "statusBadge": {
+    "message": "suspended"
+  },
+  "metaSuspendedAt": {
+    "message": "Suspended at"
+  },
+  "metaSuspendedFor": {
+    "message": "Suspended for"
+  },
+  "btnRestore": {
+    "message": "Restore"
+  },
+  "errorTitle": {
+    "message": "No Data Found"
+  },
+  "errorDesc1": {
+    "message": "The original address of this tab could not be found."
+  },
+  "errorDesc2": {
+    "message": "Session data may have been reset when the browser restarted."
+  },
+  "btnNewTab": {
+    "message": "Open New Tab"
+  },
+  "elapsedDays": {
+    "message": "$P1$d $P2$h",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      },
+      "p2": {
+        "content": "$2"
+      }
+    }
+  },
+  "elapsedHours": {
+    "message": "$P1$h $P2$m",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      },
+      "p2": {
+        "content": "$2"
+      }
+    }
+  },
+  "elapsedMinutes": {
+    "message": "$P1$m",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      }
+    }
+  },
+  "elapsedSeconds": {
+    "message": "$P1$s",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      }
+    }
+  }
+}

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tab Suspender</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+
+  <!-- ── Ana görünüm ── -->
+  <div id="view-main" class="view">
+
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+          </svg>
+        </div>
+        <span class="brand-name">Tab Suspender</span>
+      </div>
+    </header>
+
+    <!-- Stats -->
+    <section class="stats">
+      <div class="stat">
+        <span class="stat-value" id="stat-total">—</span>
+        <span class="stat-label" data-i18n="statTotal"></span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat">
+        <span class="stat-value accent" id="stat-active">—</span>
+        <span class="stat-label" data-i18n="statActive"></span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat">
+        <span class="stat-value muted" id="stat-suspended">—</span>
+        <span class="stat-label" data-i18n="statSuspended"></span>
+      </div>
+    </section>
+
+    <!-- Export row: tüm sekmeleri dışa aktar -->
+    <div class="export-row">
+      <span class="export-label" data-i18n="exportAllLabel"></span>
+      <button class="btn-export" id="btn-export-all-txt" data-i18n-title="exportTxtTitle">TXT</button>
+      <button class="btn-export" id="btn-export-all-json" data-i18n-title="exportJsonTitle">JSON</button>
+    </div>
+
+    <!-- Primary action -->
+    <div class="primary-action">
+      <button class="btn-primary" id="btn-suspend-active">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+        </svg>
+        <span data-i18n="btnSuspendActive"></span>
+      </button>
+      <span class="shortcut-tag">Alt+Shift+S</span>
+    </div>
+
+    <!-- Unsuspend all -->
+    <div class="unsuspend-all-row">
+      <button class="btn-unsuspend-all" id="btn-unsuspend-all">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.4"/>
+        </svg>
+        <span data-i18n="btnUnsuspendAll"></span>
+      </button>
+      <span class="update-hint" data-i18n="updateHint" data-i18n-title="updateHintTitle"></span>
+    </div>
+
+    <!-- Backups section -->
+    <section class="section">
+      <div class="section-header">
+        <span class="section-title" data-i18n="sectionBackups"></span>
+        <div class="section-actions">
+          <button class="btn-icon" id="btn-backup-now" data-i18n-title="btnBackupNow">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <span data-i18n="btnBackupNow"></span>
+          </button>
+        </div>
+      </div>
+
+      <div id="backup-list" class="backup-list">
+        <div class="empty-state" id="backup-empty">
+          <span data-i18n="emptyBackups"></span>
+          <span class="empty-sub" id="backup-empty-sub" data-i18n="emptyBackupsSub"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Settings section (collapsible) -->
+    <section class="section">
+      <div class="section-header settings-toggle" id="settings-toggle">
+        <span class="section-title" data-i18n="sectionSettings"></span>
+        <svg class="chevron settings-chevron" id="settings-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+      </div>
+      <div id="settings-body" class="settings-body hidden">
+        <div class="setting-row">
+          <span class="setting-label" data-i18n="settingAutoSuspend"></span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="auto-suspend-toggle" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="setting-row" id="threshold-row" style="display:none">
+          <span class="setting-label" data-i18n="settingThreshold"></span>
+          <select id="auto-suspend-threshold" class="setting-select">
+            <option value="15" data-i18n="opt15"></option>
+            <option value="30" data-i18n="opt30"></option>
+            <option value="60" data-i18n="opt60"></option>
+            <option value="120" data-i18n="opt120"></option>
+          </select>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label" data-i18n="settingBackupInterval"></span>
+          <div class="setting-input-group">
+            <input type="number" id="backup-interval" class="setting-input" min="1" max="180" step="1" />
+            <span class="setting-input-suffix" data-i18n="unitMinShort"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ── Backup detay görünümü ── -->
+  <div id="view-detail" class="view hidden">
+    <header class="header">
+      <button class="btn-back" id="btn-back">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+        <span data-i18n="btnBack"></span>
+      </button>
+      <div class="detail-meta">
+        <span class="detail-timestamp" id="detail-timestamp">—</span>
+        <span class="detail-count" id="detail-count">—</span>
+      </div>
+    </header>
+
+    <div class="detail-actions">
+      <button class="btn-restore-all" id="btn-restore-all">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.4"/>
+        </svg>
+        <span data-i18n="btnRestoreAll"></span>
+      </button>
+      <button class="btn-export" id="btn-export-txt" data-i18n-title="exportTxtTitle">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        TXT
+      </button>
+      <button class="btn-export" id="btn-export-json" data-i18n-title="exportJsonTitle">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        JSON
+      </button>
+    </div>
+
+    <div id="detail-tab-list" class="detail-tab-list"></div>
+  </div>
+
+  <script src="../i18n.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

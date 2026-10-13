@@ -1,0 +1,314 @@
+{
+  "extName": {
+    "message": "Tab Suspender"
+  },
+  "extDescription": {
+    "message": "Kullanılmayan sekmeleri askıya alıp belleği boşaltır. Otomatik askıya alma, düzenli yedek ve geri yükleme."
+  },
+  "cmdToggleDescription": {
+    "message": "Aktif sekmeyi askıya al / geri yükle"
+  },
+  "errInvalidTab": {
+    "message": "Geçersiz sekme."
+  },
+  "errAlreadySuspended": {
+    "message": "Sekme zaten askıda."
+  },
+  "errNotSuspendable": {
+    "message": "Bu sekme tipi askıya alınamaz."
+  },
+  "errIncognito": {
+    "message": "Gizli sekmeler askıya alınmaz."
+  },
+  "errSuspendInProgress": {
+    "message": "Sekme zaten askıya alınıyor."
+  },
+  "errNotSuspended": {
+    "message": "Sekme zaten aktif."
+  },
+  "errNoId": {
+    "message": "Askıya alma kimliği bulunamadı."
+  },
+  "errNoOriginalUrl": {
+    "message": "Orijinal URL verisi bulunamadı."
+  },
+  "errUnknownSender": {
+    "message": "Bilinmeyen gönderici."
+  },
+  "errNoSenderTab": {
+    "message": "Gönderen sekme bulunamadı."
+  },
+  "errNoActiveTab": {
+    "message": "Aktif sekme bulunamadı."
+  },
+  "errCannotRestore": {
+    "message": "Bu adres geri yüklenemez."
+  },
+  "errMissingTimestamp": {
+    "message": "Yedek zaman damgası eksik."
+  },
+  "menuSuspend": {
+    "message": "⏸  Sekmeyi Askıya Al"
+  },
+  "menuRestore": {
+    "message": "▶  Sekmeyi Geri Yükle"
+  },
+  "menuBackupNow": {
+    "message": "💾  Şimdi Yedekle"
+  },
+  "menuShowBackups": {
+    "message": "📋  Yedekleri Göster"
+  },
+  "statTotal": {
+    "message": "Toplam"
+  },
+  "statActive": {
+    "message": "Aktif"
+  },
+  "statSuspended": {
+    "message": "Askıda"
+  },
+  "exportAllLabel": {
+    "message": "Tüm sekmeleri dışa aktar"
+  },
+  "exportTxtTitle": {
+    "message": "URL listesini .txt olarak indir"
+  },
+  "exportJsonTitle": {
+    "message": "JSON olarak indir"
+  },
+  "btnSuspendActive": {
+    "message": "Aktif Sekmeyi Askıya Al"
+  },
+  "btnUnsuspendAll": {
+    "message": "Tüm Askıdaki Sekmeleri Geri Yükle"
+  },
+  "updateHint": {
+    "message": "⚠ Güncelleme öncesi çalıştır"
+  },
+  "updateHintTitle": {
+    "message": "Eklentiyi güncellemeden önce bunu çalıştır"
+  },
+  "sectionBackups": {
+    "message": "Yedekler"
+  },
+  "btnBackupNow": {
+    "message": "Şimdi Yedekle"
+  },
+  "emptyBackups": {
+    "message": "Henüz yedek yok."
+  },
+  "emptyBackupsSub": {
+    "message": "Yedekler otomatik alınır."
+  },
+  "sectionSettings": {
+    "message": "Ayarlar"
+  },
+  "settingAutoSuspend": {
+    "message": "Otomatik Askıya Alma"
+  },
+  "settingThreshold": {
+    "message": "Hareketsizlik süresi"
+  },
+  "opt15": {
+    "message": "15 dakika"
+  },
+  "opt30": {
+    "message": "30 dakika"
+  },
+  "opt60": {
+    "message": "1 saat"
+  },
+  "opt120": {
+    "message": "2 saat"
+  },
+  "settingBackupInterval": {
+    "message": "Yedekleme sıklığı"
+  },
+  "unitMinShort": {
+    "message": "dk"
+  },
+  "btnBack": {
+    "message": "Geri"
+  },
+  "btnRestoreAll": {
+    "message": "Tümünü Geri Yükle"
+  },
+  "tabsCount": {
+    "message": "$P1$ sekme",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      }
+    }
+  },
+  "tabsCountSuspended": {
+    "message": "$P1$ sekme · $P2$ askıda",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      },
+      "p2": {
+        "content": "$2"
+      }
+    }
+  },
+  "titleDelete": {
+    "message": "Sil"
+  },
+  "toastBackupDeleted": {
+    "message": "Yedek silindi"
+  },
+  "badgeSuspended": {
+    "message": "Askıda"
+  },
+  "titleOpen": {
+    "message": "Aç"
+  },
+  "toastTabOpened": {
+    "message": "Sekme açıldı"
+  },
+  "expBackupTitle": {
+    "message": "# Tab Suspender: Yedek Dışa Aktarma"
+  },
+  "expAllTitle": {
+    "message": "# Tab Suspender: Tüm Sekmeler"
+  },
+  "expDate": {
+    "message": "# Tarih: $P1$",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      }
+    }
+  },
+  "expTabCount": {
+    "message": "# Sekme sayısı: $P1$",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      }
+    }
+  },
+  "expSuspendedCount": {
+    "message": "# Askıda: $P1$",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      }
+    }
+  },
+  "expMarkerSuspended": {
+    "message": "[ASKIDA]"
+  },
+  "toastTabsFailed": {
+    "message": "Sekmeler alınamadı"
+  },
+  "toastTxtDownloaded": {
+    "message": "TXT indirildi"
+  },
+  "toastJsonDownloaded": {
+    "message": "JSON indirildi"
+  },
+  "backupIntervalInfo": {
+    "message": "Yedekler her $P1$ dakikada otomatik alınır.",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      }
+    }
+  },
+  "toastNoSuspended": {
+    "message": "Askıda sekme yok"
+  },
+  "toastTabsRestored": {
+    "message": "$P1$ sekme geri yüklendi",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      }
+    }
+  },
+  "toastTabSuspended": {
+    "message": "Sekme askıya alındı"
+  },
+  "toastBackupTaken": {
+    "message": "Yedek alındı"
+  },
+  "confirmRestoreAll": {
+    "message": "$P1$ sekme yeni sekmeler olarak açılacak.\nEmin misiniz?",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      }
+    }
+  },
+  "toastAllTabsOpened": {
+    "message": "Tüm sekmeler açıldı"
+  },
+  "suspendPageTitle": {
+    "message": "Askıya Alındı"
+  },
+  "statusBadge": {
+    "message": "askıya alındı"
+  },
+  "metaSuspendedAt": {
+    "message": "Askıya alınma zamanı"
+  },
+  "metaSuspendedFor": {
+    "message": "Askıda"
+  },
+  "btnRestore": {
+    "message": "Geri Yükle"
+  },
+  "errorTitle": {
+    "message": "Veri Bulunamadı"
+  },
+  "errorDesc1": {
+    "message": "Bu sekmenin orijinal URL bilgisi bulunamadı."
+  },
+  "errorDesc2": {
+    "message": "Tarayıcı yeniden başlatıldığında session verileri sıfırlanmış olabilir."
+  },
+  "btnNewTab": {
+    "message": "Yeni Sekme Aç"
+  },
+  "elapsedDays": {
+    "message": "$P1$ gün $P2$ saat",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      },
+      "p2": {
+        "content": "$2"
+      }
+    }
+  },
+  "elapsedHours": {
+    "message": "$P1$ saat $P2$ dakika",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      },
+      "p2": {
+        "content": "$2"
+      }
+    }
+  },
+  "elapsedMinutes": {
+    "message": "$P1$ dakika",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      }
+    }
+  },
+  "elapsedSeconds": {
+    "message": "$P1$ saniye",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      }
+    }
+  }
+}

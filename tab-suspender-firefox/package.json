@@ -1,0 +1,11 @@
+{
+  "name": "tab-suspender-firefox",
+  "version": "1.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Suspends inactive tabs to free memory (Firefox, Manifest V3)",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "test": "node tests/run-all.js"
+  }
+}

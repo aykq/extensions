@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title data-i18n="suspendPageTitle"></title>
+  <link rel="stylesheet" href="suspend.css" />
+  <link rel="icon" type="image/png" href="../icons/48.png" />
+</head>
+<body>
+  <div class="bg-grid"></div>
+
+  <main class="container" id="main" aria-live="polite">
+    <!-- Loading state -->
+    <div class="state" id="state-loading">
+      <div class="spinner"></div>
+    </div>
+
+    <!-- Suspended state -->
+    <div class="state hidden" id="state-suspended">
+      <div class="card">
+        <div class="card-header">
+          <div class="favicon-wrap">
+            <img id="favicon" src="" alt="" class="favicon hidden" />
+            <div class="favicon-fallback hidden" id="favicon-fallback">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/>
+              </svg>
+            </div>
+          </div>
+          <div class="status-badge">
+            <span class="status-dot"></span>
+            <span data-i18n="statusBadge"></span>
+          </div>
+        </div>
+
+        <h1 class="tab-title" id="tab-title">—</h1>
+
+        <div class="url-row">
+          <span class="url-label">URL</span>
+          <a class="tab-url" id="tab-url" href="#" target="_blank" rel="noopener noreferrer">—</a>
+        </div>
+
+        <div class="meta-row">
+          <div class="meta-item">
+            <span class="meta-label" data-i18n="metaSuspendedAt"></span>
+            <span class="meta-value" id="suspended-at">—</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label" data-i18n="metaSuspendedFor"></span>
+            <span class="meta-value" id="time-elapsed">—</span>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn-unsuspend" id="btn-unsuspend" title="Alt+Shift+S">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.4"/>
+            </svg>
+            <span data-i18n="btnRestore"></span>
+          </button>
+          <span class="shortcut-hint">Alt+Shift+S</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Error state -->
+    <div class="state hidden" id="state-error">
+      <div class="card card-error">
+        <div class="error-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <h2 class="error-title" data-i18n="errorTitle"></h2>
+        <p class="error-desc" id="error-msg">
+          <span data-i18n="errorDesc1"></span><br/>
+          <span data-i18n="errorDesc2"></span>
+        </p>
+        <button class="btn-newtab" id="btn-newtab" data-i18n="btnNewTab"></button>
+      </div>
+    </div>
+  </main>
+
+  <script src="../i18n.js"></script>
+  <script src="suspend.js"></script>
+</body>
+</html>
