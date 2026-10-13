@@ -2,7 +2,7 @@
 
 Kullanılmayan sekmeleri hafif bir bekleme sayfasıyla değiştirip gerçek sayfayı bellekten atarak RAM kazandırır. Sekmeyi elle, kısayolla ya da belirli bir hareketsizlik süresi sonunda otomatik olarak askıya alabilirsin. Bekleme sayfasındaki düğmeye basınca özgün sayfa geri gelir.
 
-Chromium sürümü (Chrome, Brave, Edge, Manifest V3). Firefox ve Zen sürümü [tab-suspender-firefox](../tab-suspender-firefox) klasöründe.
+Chromium sürümü (Chrome, Brave, Edge, Manifest V3). Firefox ve Zen sürümü [tab-suspender-firefox](../tab-suspender-firefox/README.tr.md) klasöründe.
 
 [English](README.md)
 

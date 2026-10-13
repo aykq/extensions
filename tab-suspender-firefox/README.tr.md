@@ -2,7 +2,7 @@
 
 Kullanılmayan sekmeleri hafif bir bekleme sayfasıyla değiştirip gerçek sayfayı bellekten atarak RAM kazandırır. Sekmeyi elle, kısayolla ya da belirli bir hareketsizlik süresi sonunda otomatik olarak askıya alabilirsin. Bekleme sayfasındaki düğmeye basınca özgün sayfa geri gelir.
 
-Bu, Firefox sürümüdür (Firefox 115 veya üstü, Zen). Arka plan kodu, depolama, favicon ve menülerin iki tarayıcıda farklı çalışması yüzünden [tab-suspender](../tab-suspender) içindeki Chromium sürümünden ayrı bir kod tabanıdır. Aşağıda belirtilenler dışında özellikler aynıdır.
+Bu, Firefox sürümüdür (Firefox 115 veya üstü, Zen). Arka plan kodu, depolama, favicon ve menülerin iki tarayıcıda farklı çalışması yüzünden [tab-suspender](../tab-suspender/README.tr.md) içindeki Chromium sürümünden ayrı bir kod tabanıdır. Aşağıda belirtilenler dışında özellikler aynıdır.
 
 [English](README.md)
 
