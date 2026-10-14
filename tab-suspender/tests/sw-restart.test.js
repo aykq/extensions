@@ -42,6 +42,7 @@ function createBrowserWorld(tabs) {
     updates: [],
     created: [],
     discarded: [],
+    reloaded: [],
     menus: {},
   };
 }
@@ -162,7 +163,20 @@ function bootServiceWorker(world, opts) {
         return clone(t);
       },
       create: async (props) => { world.created.push(props); return Object.assign({ id: 999 }, props); },
-      discard: async (id) => { world.discarded.push(id); },
+      discard: async (id) => {
+        world.discarded.push(id);
+        const t = world.tabs.find((x) => x.id === id);
+        if (t) t.discarded = true;
+      },
+      reload: async (id) => {
+        world.reloaded.push(id);
+        const t = world.tabs.find((x) => x.id === id);
+        if (!t) return;
+        setTimeout(() => {
+          Object.assign(t, { status: 'complete', favIconUrl: 'data:image/png;base64,AAAA' });
+          for (const fn of L.tabUpdated.slice()) fn(id, { status: 'complete' }, clone(t));
+        }, 20);
+      },
       onActivated: ev(L.tabActivated),
       onUpdated: ev(L.tabUpdated),
       onMoved: ev(L.tabMoved),
@@ -574,6 +588,36 @@ function bootServiceWorker(world, opts) {
   check('in a mixed selection the suspended tab was NOT restored',
     !world12.updates.some((u) => u.id === 1),
     JSON.stringify(world12.updates));
+
+  console.log('\n-- Restored suspended tabs get their icon back --');
+  const restoredUrl = (i) => SUSPEND_PREFIX + '?id=r' + i + '&url=' + encodeURIComponent('https://r' + i + '.example/');
+  const world13 = createBrowserWorld([
+    { id: 1, index: 0, windowId: 1, active: true, pinned: false, url: 'https://open.example/', title: 'Open' },
+    { id: 2, index: 1, windowId: 1, active: false, pinned: false, url: restoredUrl(2), title: 'R2',
+      status: 'unloaded', discarded: false, favIconUrl: '' },
+    { id: 3, index: 2, windowId: 1, active: false, pinned: false, url: restoredUrl(3), title: 'R3',
+      status: 'unloaded', discarded: true, favIconUrl: 'data:image/png;base64,BBBB' },
+    { id: 4, index: 3, windowId: 1, active: false, pinned: false, url: restoredUrl(4), title: 'R4',
+      status: 'unloaded', discarded: false, favIconUrl: '' },
+  ]);
+  seedSuspended(world13, {
+    r2: { originalUrl: 'https://r2.example/', title: 'R2', greyFavIconUrl: 'data:image/png;base64,AAAA' },
+    r3: { originalUrl: 'https://r3.example/', title: 'R3', greyFavIconUrl: 'data:image/png;base64,BBBB' },
+    r4: { originalUrl: 'https://r4.example/', title: 'R4', greyFavIconUrl: 'data:image/png;base64,AAAA' },
+  });
+  const sw13 = bootServiceWorker(world13);
+  for (const fn of sw13.L.onStartup) await fn();
+  await settle();
+  await settle();
+  check('restored tabs without an icon are reloaded once',
+    world13.reloaded.slice().sort().join(',') === '2,4', JSON.stringify(world13.reloaded));
+  check('a tab that already has its icon is not reloaded', world13.reloaded.indexOf(3) === -1);
+  check('reloaded tabs are discarded again',
+    world13.discarded.indexOf(2) !== -1 && world13.discarded.indexOf(4) !== -1, JSON.stringify(world13.discarded));
+  for (const fn of sw13.L.tabActivated) await fn({ tabId: 1 });
+  await settle();
+  check('a later sweep does not reload them again',
+    world13.reloaded.length === 2, JSON.stringify(world13.reloaded));
 
   console.log('\n-- Favicon generation fails (offline) --');
   const world4 = createBrowserWorld([

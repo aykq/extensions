@@ -337,7 +337,39 @@ async function discardSuspendedTab(tabId) {
   }
 }
 
+const ICON_REFRESH_CONCURRENCY = 4;
+const ICON_REFRESH_TIMEOUT_MS  = 5000;
+let iconRefresh = null;
+
+// The empty favIconUrl check is the loop guard: a reloaded tab is discarded with an icon and is not picked again.
+function needsIconRefresh(t) {
+  return isSuspendPage(t.url) && !t.active && !t.discarded && t.status === "unloaded" && !t.favIconUrl;
+}
+
+async function reloadForIcon(tabId) {
+  await browser.tabs.reload(tabId).catch(() => {});
+  const deadline = Date.now() + ICON_REFRESH_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await sleep(FAVICON_POLL_MS);
+    const t = await browser.tabs.get(tabId).catch(() => null);
+    if (!t || t.discarded || t.active) return;
+  }
+}
+
+function refreshRestoredIcons() {
+  if (iconRefresh) return iconRefresh;
+  iconRefresh = (async () => {
+    const queue = (await browser.tabs.query({})).filter(needsIconRefresh);
+    const worker = async () => {
+      for (let t = queue.shift(); t; t = queue.shift()) await reloadForIcon(t.id);
+    };
+    await Promise.allSettled(Array.from({ length: ICON_REFRESH_CONCURRENCY }, worker));
+  })().finally(() => { iconRefresh = null; });
+  return iconRefresh;
+}
+
 async function sweepSuspendedTabs() {
+  refreshRestoredIcons().catch(() => {});
   const tabs = await browser.tabs.query({});
   await Promise.allSettled(
     tabs.filter((t) => isSuspendPage(t.url) && !t.active && !t.discarded)
