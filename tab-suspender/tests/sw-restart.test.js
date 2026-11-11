@@ -172,6 +172,8 @@ function bootServiceWorker(world, opts) {
         world.reloaded.push(id);
         const t = world.tabs.find((x) => x.id === id);
         if (!t) return;
+        t.discarded = false;
+        t.status = 'loading';
         setTimeout(() => {
           Object.assign(t, { status: 'complete', favIconUrl: 'data:image/png;base64,AAAA' });
           for (const fn of L.tabUpdated.slice()) fn(id, { status: 'complete' }, clone(t));
@@ -618,6 +620,35 @@ function bootServiceWorker(world, opts) {
   await settle();
   check('a later sweep does not reload them again',
     world13.reloaded.length === 2, JSON.stringify(world13.reloaded));
+
+  console.log('\n-- Discarded restored tabs stuck on the pause icon --');
+  const pauseIcon = 'chrome-extension://test/icons/48.png';
+  const world14 = createBrowserWorld([
+    { id: 1, index: 0, windowId: 1, active: true, pinned: false, url: 'https://open.example/', title: 'Open' },
+    { id: 2, index: 1, windowId: 2, active: false, pinned: false, url: restoredUrl(2), title: 'R2',
+      status: 'unloaded', discarded: true, favIconUrl: pauseIcon },
+    { id: 3, index: 2, windowId: 2, active: false, pinned: false, url: restoredUrl(3), title: 'R3',
+      status: 'unloaded', discarded: true, favIconUrl: pauseIcon },
+    { id: 4, index: 3, windowId: 2, active: false, pinned: false, url: restoredUrl(4), title: 'R4',
+      status: 'unloaded', discarded: true, favIconUrl: 'data:image/png;base64,BBBB' },
+  ]);
+  seedSuspended(world14, {
+    r2: { originalUrl: 'https://r2.example/', title: 'R2', greyFavIconUrl: 'data:image/png;base64,AAAA' },
+    r3: { originalUrl: 'https://r3.example/', title: 'R3' },
+    r4: { originalUrl: 'https://r4.example/', title: 'R4', greyFavIconUrl: 'data:image/png;base64,BBBB' },
+  });
+  const sw14 = bootServiceWorker(world14);
+  for (const fn of sw14.L.onStartup) await fn();
+  await settle();
+  await settle();
+  check('a discarded tab showing the pause icon is reloaded when a grey icon exists',
+    world14.reloaded.join(',') === '2', JSON.stringify(world14.reloaded));
+  check('it is discarded again afterwards', world14.discarded.indexOf(2) !== -1, JSON.stringify(world14.discarded));
+  world14.tabs.find((x) => x.id === 2).favIconUrl = pauseIcon;
+  for (const fn of sw14.L.tabActivated) await fn({ tabId: 1 });
+  await settle();
+  check('a tab is reloaded at most once even if the icon does not stick',
+    world14.reloaded.length === 1, JSON.stringify(world14.reloaded));
 
   console.log('\n-- Favicon generation fails (offline) --');
   const world4 = createBrowserWorld([

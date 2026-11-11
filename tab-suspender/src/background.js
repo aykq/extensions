@@ -341,25 +341,44 @@ const ICON_REFRESH_CONCURRENCY = 4;
 const ICON_REFRESH_TIMEOUT_MS  = 5000;
 let iconRefresh = null;
 
-// The empty favIconUrl check is the loop guard: a reloaded tab is discarded with an icon and is not picked again.
-function needsIconRefresh(t) {
-  return isSuspendPage(t.url) && !t.active && !t.discarded && t.status === "unloaded" && !t.favIconUrl;
+const ICON_REFRESHED_KEY = "iconRefreshed";
+
+// A restored tab can come back unloaded with no icon, or discarded with the pause icon from suspend.html instead of the grey one.
+async function needsIconRefresh(t) {
+  if (!isSuspendPage(t.url) || t.active) return false;
+  if (!t.discarded && t.status !== "unloaded") return false;
+  if (!t.favIconUrl) return true;
+  if (t.favIconUrl.startsWith("data:")) return false;
+  const uuid = extractUUIDFromUrl(t.url);
+  const entry = uuid ? await getSuspendedEntry(uuid) : null;
+  return Boolean(entry?.greyFavIconUrl);
 }
 
 async function reloadForIcon(tabId) {
   await browser.tabs.reload(tabId).catch(() => {});
+  let loaded = false;
   const deadline = Date.now() + ICON_REFRESH_TIMEOUT_MS;
   while (Date.now() < deadline) {
     await sleep(FAVICON_POLL_MS);
     const t = await browser.tabs.get(tabId).catch(() => null);
-    if (!t || t.discarded || t.active) return;
+    if (!t || t.active) return;
+    if (!t.discarded) loaded = true;
+    else if (loaded) return;
   }
 }
 
 function refreshRestoredIcons() {
   if (iconRefresh) return iconRefresh;
   iconRefresh = (async () => {
-    const queue = (await browser.tabs.query({})).filter(needsIconRefresh);
+    const got = await browser.storage.session.get(ICON_REFRESHED_KEY).catch(() => ({}));
+    // Loop guard: each tab is reloaded at most once per browser session, even if its icon still does not stick.
+    const done = new Set(got?.[ICON_REFRESHED_KEY] || []);
+    const tabs = (await browser.tabs.query({})).filter((t) => !done.has(t.id));
+    const flags = await Promise.all(tabs.map((t) => needsIconRefresh(t).catch(() => false)));
+    const queue = tabs.filter((_, i) => flags[i]);
+    if (!queue.length) return;
+    for (const t of queue) done.add(t.id);
+    await browser.storage.session.set({ [ICON_REFRESHED_KEY]: [...done] }).catch(() => {});
     const worker = async () => {
       for (let t = queue.shift(); t; t = queue.shift()) await reloadForIcon(t.id);
     };
