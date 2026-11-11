@@ -778,11 +778,11 @@ async function detectOrphanedSuspended() {
 }
 
 // The service worker is stopped when idle and module variables are lost, and onInstalled/onStartup do not fire again.
-// Idle clocks and tab positions therefore live in storage.session.
+// Idle clocks therefore live in storage.session.
 const TAB_STATE_KEY = "tabState";
 
 function emptyTabState() {
-  return { urls: {}, index: {}, lastActive: {}, activeTabId: null };
+  return { urls: {}, lastActive: {}, activeTabId: null };
 }
 
 async function readTabState() {
@@ -807,16 +807,8 @@ function mutateTabState(fn) {
   return tabStateChain;
 }
 
-async function refreshIndexCache(windowId) {
-  const tabs = await browser.tabs.query({ windowId });
-  await mutateTabState((st) => {
-    for (const t of tabs) st.index[t.id] = { index: t.index, windowId: t.windowId };
-  });
-}
-
 function forgetTab(st, tabId) {
   delete st.urls[tabId];
-  delete st.index[tabId];
   delete st.lastActive[tabId];
 }
 
@@ -847,7 +839,6 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
   await mutateTabState((st) => {
     if (urlChanged && tab.url) st.urls[tabId] = tab.url;
-    if (tab.index !== undefined) st.index[tabId] = { index: tab.index, windowId: tab.windowId };
   });
 
   if (urlChanged && tab.active) await updateToggleMenuTitle(tabId);
@@ -857,24 +848,17 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 browser.tabs.onReplaced.addListener(async (addedTabId, removedTabId) => {
   await mutateTabState((st) => {
     if (st.urls[removedTabId] !== undefined)       st.urls[addedTabId]       = st.urls[removedTabId];
-    if (st.index[removedTabId] !== undefined)      st.index[addedTabId]      = st.index[removedTabId];
     if (st.lastActive[removedTabId] !== undefined) st.lastActive[addedTabId] = st.lastActive[removedTabId];
     if (st.activeTabId === removedTabId)           st.activeTabId            = addedTabId;
     forgetTab(st, removedTabId);
   });
 });
 
-browser.tabs.onMoved.addListener(async (tabId, moveInfo) => {
-  await refreshIndexCache(moveInfo.windowId);
-});
-
 browser.tabs.onCreated.addListener(async (tab) => {
   await mutateTabState((st) => {
     if (tab.url) st.urls[tab.id] = tab.url;
-    st.index[tab.id] = { index: tab.index, windowId: tab.windowId };
     st.lastActive[tab.id] = Date.now();
   });
-  await refreshIndexCache(tab.windowId);
 });
 
 browser.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
@@ -886,40 +870,17 @@ browser.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
   }
 
   // Read and delete in one step, a separate read can miss a queued write.
-  let before = null;
+  let cachedUrl;
   await mutateTabState((st) => {
-    before = {
-      url:       st.urls[tabId],
-      index:     st.index[tabId],
-      wasActive: st.activeTabId === tabId,
-    };
+    cachedUrl = st.urls[tabId];
     forgetTab(st, tabId);
   });
-  if (!before) return;
 
-  const cachedUrl = before.url;
   if (cachedUrl && isSuspendPage(cachedUrl)) {
     const uuid = extractUUIDFromUrl(cachedUrl);
     if (uuid && !(await uuidInUseElsewhere(uuid, tabId))) {
       await deleteSuspendedEntry(uuid);
     }
-  }
-
-  if (!before.wasActive || !before.index) return;
-
-  const cached = before.index;
-
-  const { index: closedIndex, windowId } = cached;
-  const remaining = await browser.tabs.query({ windowId });
-  if (remaining.length === 0) return;
-
-  remaining.sort((a, b) => a.index - b.index);
-
-  const target = remaining.find(t => t.index >= closedIndex)
-              ?? remaining[remaining.length - 1];
-
-  if (target && !target.active) {
-    await browser.tabs.update(target.id, { active: true });
   }
 });
 
@@ -959,7 +920,6 @@ async function initialize() {
   await mutateTabState((st) => {
     for (const tab of allTabs) {
       if (tab.url) st.urls[tab.id] = tab.url;
-      st.index[tab.id] = { index: tab.index, windowId: tab.windowId };
       // Never overwrite: this reruns on every wake-up, and resetting idle clocks would keep automatic suspension from ever firing.
       if (st.lastActive[tab.id] === undefined) st.lastActive[tab.id] = now;
       if (tab.active && st.activeTabId === null) st.activeTabId = tab.id;
@@ -976,7 +936,6 @@ async function pruneDeadTabState() {
       if (!live.has(key)) {
         delete st.lastActive[key];
         delete st.urls[key];
-        delete st.index[key];
       }
     }
   });
