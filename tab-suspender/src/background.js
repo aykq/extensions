@@ -344,14 +344,38 @@ let iconRefresh = null;
 const ICON_REFRESHED_KEY = "iconRefreshed";
 
 // A restored tab can come back unloaded with no icon, or discarded with the pause icon from suspend.html instead of the grey one.
-async function needsIconRefresh(t) {
+async function needsIconRefresh(t, rebuildTried) {
   if (!isSuspendPage(t.url) || t.active) return false;
   if (!t.discarded && t.status !== "unloaded") return false;
-  if (!t.favIconUrl) return true;
-  if (t.favIconUrl.startsWith("data:")) return false;
+  if (t.favIconUrl?.startsWith("data:")) return false;
   const uuid = extractUUIDFromUrl(t.url);
   const entry = uuid ? await getSuspendedEntry(uuid) : null;
-  return Boolean(entry?.greyFavIconUrl);
+  if (entry?.greyFavIconUrl) return true;
+  if (uuid && !entry) {
+    rebuildTried.add(t.id);
+    if (await rebuildMissingEntry(uuid, t)) return true;
+  }
+  return !t.favIconUrl;
+}
+
+async function rebuildMissingEntry(uuid, t) {
+  const originalUrl = urlParamOf(t.url);
+  if (!originalUrl) return false;
+  const params = new URL(t.url).searchParams;
+  const fav = params.get("fav") || "";
+  const greyFavIconUrl = await withTimeout(toGreyscaleFavicon(fav, originalUrl), FAVICON_TIMEOUT_MS).catch(() => "");
+  if (!greyFavIconUrl) return false;
+  if (await getSuspendedEntry(uuid)) return true;
+  const ts = params.get("ts") || "";
+  await setSuspendedEntry(uuid, {
+    originalUrl,
+    title: params.get("t") || t.title || originalUrl,
+    favIconUrl: storableFavIconUrl(fav),
+    greyFavIconUrl,
+    suspendedAt: Number.isNaN(Date.parse(ts)) ? new Date().toISOString() : ts,
+    windowId: t.windowId,
+  });
+  return true;
 }
 
 async function reloadForIcon(tabId) {
@@ -374,10 +398,12 @@ function refreshRestoredIcons() {
     // Loop guard: each tab is reloaded at most once per browser session, even if its icon still does not stick.
     const done = new Set(got?.[ICON_REFRESHED_KEY] || []);
     const tabs = (await browser.tabs.query({})).filter((t) => !done.has(t.id));
-    const flags = await Promise.all(tabs.map((t) => needsIconRefresh(t).catch(() => false)));
+    const rebuildTried = new Set();
+    const flags = await Promise.all(tabs.map((t) => needsIconRefresh(t, rebuildTried).catch(() => false)));
     const queue = tabs.filter((_, i) => flags[i]);
-    if (!queue.length) return;
+    if (!queue.length && !rebuildTried.size) return;
     for (const t of queue) done.add(t.id);
+    for (const id of rebuildTried) done.add(id);
     await browser.storage.session.set({ [ICON_REFRESHED_KEY]: [...done] }).catch(() => {});
     const worker = async () => {
       for (let t = queue.shift(); t; t = queue.shift()) await reloadForIcon(t.id);

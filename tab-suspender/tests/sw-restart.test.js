@@ -650,6 +650,37 @@ function bootServiceWorker(world, opts) {
   check('a tab is reloaded at most once even if the icon does not stick',
     world14.reloaded.length === 1, JSON.stringify(world14.reloaded));
 
+  console.log('\n-- Pause icon on a tab whose record is missing --');
+  const noRecordUrl = (i) => restoredUrl(i) + '&t=' + encodeURIComponent('Lost ' + i) + '&ts=2026-10-28T09:14:26.448Z';
+  const noRecordTabs = () => [
+    { id: 1, index: 0, windowId: 1, active: true, pinned: false, url: 'https://open.example/', title: 'Open' },
+    { id: 2, index: 1, windowId: 1, active: false, pinned: false, url: noRecordUrl(2), title: 'Lost 2',
+      status: 'unloaded', discarded: true, favIconUrl: pauseIcon },
+    { id: 3, index: 2, windowId: 1, active: false, pinned: false, url: SUSPEND_PREFIX + '?id=r3', title: 'No url',
+      status: 'unloaded', discarded: true, favIconUrl: pauseIcon },
+  ];
+  const world15 = createBrowserWorld(noRecordTabs());
+  const sw15 = bootServiceWorker(world15, { favicon: true });
+  for (const fn of sw15.L.onStartup) await fn();
+  await settle();
+  await settle();
+  const rebuilt = readSuspended(world15).r2;
+  check('the missing record is rebuilt from the suspend URL with a grey icon',
+    rebuilt && rebuilt.originalUrl === 'https://r2.example/' && rebuilt.title === 'Lost 2'
+      && /^data:image\/png/.test(rebuilt.greyFavIconUrl || '') && rebuilt.suspendedAt === '2026-10-28T09:14:26.448Z',
+    JSON.stringify(rebuilt && Object.assign({}, rebuilt, { greyFavIconUrl: (rebuilt.greyFavIconUrl || '').slice(0, 15) })));
+  check('the rebuilt tab is reloaded, a tab without an original URL is not',
+    world15.reloaded.join(',') === '2', JSON.stringify(world15.reloaded));
+
+  const world16 = createBrowserWorld(noRecordTabs());
+  const sw16 = bootServiceWorker(world16);
+  for (const fn of sw16.L.onStartup) await fn();
+  await settle();
+  for (const fn of sw16.L.tabActivated) await fn({ tabId: 1 });
+  await settle();
+  check('when the icon cannot be generated nothing is reloaded or stored',
+    world16.reloaded.length === 0 && !readSuspended(world16).r2, JSON.stringify(world16.reloaded));
+
   console.log('\n-- Favicon generation fails (offline) --');
   const world4 = createBrowserWorld([
     { id: 1, index: 0, windowId: 1, active: true, pinned: false, highlighted: true,
